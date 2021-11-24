@@ -1,4 +1,4 @@
-use cosmwasm_std::{StdError, StdResult, Uint128};
+use cosmwasm_std::Uint128;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -6,11 +6,25 @@ use serde::{Deserialize, Serialize};
 pub struct InstantiateMsg {}
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]
 pub enum ExecuteMsg {
-    AddProperty { rent: Uint128 },
-    AcceptLease { rentee: String, property_id: usize },
-    RequestForLease { property_id: usize },
-    TerminateLease { property_id: usize },
-    PayRent { property_id: usize },
+    /// it is function to register property
+    AddProperty {
+        rent: Uint128,
+    },
+    AcceptLease {
+        property_id: usize,
+    },
+    RequestForLease {
+        property_id: usize,
+    },
+    TerminateLease {
+        property_id: usize,
+    },
+    PayRent {
+        property_id: usize,
+    },
+    RejectLease {
+        property_id: usize,
+    },
 }
 
 #[derive(Serialize, Deserialize, JsonSchema, Debug, Clone, PartialEq)]

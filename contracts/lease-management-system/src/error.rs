@@ -32,4 +32,9 @@ pub enum ContractError {
 
     #[error("Allowance is expired")]
     Expired {},
+
+    #[error("Not Expired")]
+    NotExpired {},
+    #[error("Expiration does not exist")]
+    ExpirationDoesNotExist {},
 }
