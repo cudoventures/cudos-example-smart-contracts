@@ -35,6 +35,13 @@ pub enum ContractError {
 
     #[error("Not Expired")]
     NotExpired {},
+
     #[error("Expiration does not exist")]
     ExpirationDoesNotExist {},
+
+    #[error("Rentee exist but not accepted")]
+    RenteeExist {},
+
+    #[error("Rentee is already accepted")]
+    IsAcceptedByRenter {},
 }
