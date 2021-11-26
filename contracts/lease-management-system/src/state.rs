@@ -1,7 +1,5 @@
-use cosmwasm_std::{Addr, Coin, Uint128};
+use cosmwasm_std::Uint128;
 use cw0::Expiration;
-use cw_controllers::Admin;
-use cw_storage_plus::{Item, Map};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
