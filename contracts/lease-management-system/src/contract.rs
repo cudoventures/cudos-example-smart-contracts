@@ -108,7 +108,7 @@ fn execute_request_lease(
     // The caller of this function is Rentee who wants to rent a property and will pay rent + security in desired denomination mentioned in the contract ie.. native currency.
     // Locks rent of the first month with a security deposit which is equivalent to one month rent to the contract ie.. rentee needs to lock 2x amount of rent.
     // This rent of the first month + security is released when the Renter of the property accepts the rent.
-    // If amount provided by rentee is more than one month rent + security then refund the excess rent to the rentee.   
+    // If amount provided by rentee is more than one month rent + security then refund the excess rent to the rentee.
 }
 
 fn execute_terminate_lease(
@@ -134,24 +134,8 @@ pub fn query(deps: Deps, _env: Env, _info: MessageInfo, msg: QueryMsg) -> StdRes
     }
 }
 
-pub fn query_property_info(deps: Deps, id: usize) -> StdResult<FlatInfo> {
-    let flat = FLAT_LIST.load(deps.storage).unwrap();
-    Ok(flat[id].clone())
-}
+pub fn query_property_info(deps: Deps, id: usize) -> StdResult<FlatInfo> {}
 
-pub fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<usize>> {
-    let flat_list = FLAT_LIST.load(deps.storage)?;
-    let mut list: Vec<usize> = vec![];
-    for (i, flat) in flat_list.iter().enumerate() {
-        match flat.rentee {
-            Some(_) => {}
-            None => list.push(i),
-        }
-    }
-    Ok(list)
-}
+pub fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<usize>> {}
 
-pub fn query_get_total_property(deps: Deps) -> StdResult<usize> {
-    let flat_list = FLAT_LIST.load(deps.storage)?;
-    Ok(flat_list.len())
-}
+pub fn query_get_total_property(deps: Deps) -> StdResult<usize> {}
