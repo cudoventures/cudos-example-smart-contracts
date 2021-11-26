@@ -1,6 +1,9 @@
 #![cfg(test)]
 use crate::{
-    contract::{execute, instantiate, query_property_info},
+    contract::{
+        execute, instantiate, query_get_total_property, query_property_info,
+        query_show_all_available_properties,
+    },
     msg::{ExecuteMsg, InstantiateMsg},
     state::FlatInfo,
     ContractError,
@@ -383,7 +386,7 @@ fn reject_lease() {
             expires: None
         }
     );
-    
+
     // error if invalid renter trying to reject the rentee
     let msg = ExecuteMsg::RequestForLease { property_id: 0 };
     let rentee = String::from("rentee");
@@ -411,4 +414,96 @@ fn reject_lease() {
     let env = mock_env();
     let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
     assert_eq!(err, ContractError::IsAcceptedByRenter {});
+}
+#[test]
+fn query_get_total_properties() {
+    let mut deps = mock_dependencies(&[]);
+    let owner = String::from("owner");
+    do_instantiate(deps.as_mut(), &owner);
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(200),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(300),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let total = query_get_total_property(deps.as_ref()).unwrap();
+    assert_eq!(total, 2);
+}
+#[test]
+fn query_show_all_available() {
+    let mut deps = mock_dependencies(&[]);
+    let owner = String::from("owner");
+    do_instantiate(deps.as_mut(), &owner);
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(200),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(300),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let msg = ExecuteMsg::RequestForLease { property_id: 1 };
+    let rentee = String::from("rentee");
+    let info = mock_info(rentee.as_str(), &coins(600u128, String::from("cudo")));
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let msg = ExecuteMsg::AcceptLease { property_id: 1 };
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let env = mock_env();
+    execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+
+    let q = query_show_all_available_properties(deps.as_ref()).unwrap();
+    assert_eq!(q, vec![0]);
+}
+
+#[test]
+fn query_property() {
+    let mut deps = mock_dependencies(&[]);
+    let owner = String::from("owner");
+    do_instantiate(deps.as_mut(), &owner);
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(200),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+
+    let renter = String::from("renter");
+    let info = mock_info(renter.as_str(), &[]);
+    let msg = ExecuteMsg::AddProperty {
+        rent: Uint128::new(300),
+    };
+    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+    let q = query_property_info(deps.as_ref(), 0).unwrap();
+    assert_eq!(
+        q,
+        FlatInfo {
+            renter: renter.to_string(),
+            rentee: None,
+            rent: Uint128::new(200),
+            expires: None
+        }
+    );
+    let q = query_property_info(deps.as_ref(), 2).unwrap_err();
+    assert_eq!(
+        q,
+        StdError::NotFound {
+            kind: String::from("property not found")
+        }
+    );
 }
