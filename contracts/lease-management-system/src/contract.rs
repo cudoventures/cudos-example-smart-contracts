@@ -131,11 +131,14 @@ pub fn query(deps: Deps, _env: Env, _info: MessageInfo, msg: QueryMsg) -> StdRes
             to_binary(&query_show_all_available_properties(deps)?)
         }
         QueryMsg::GetTotalProperties => to_binary(&query_get_total_property(deps)?),
+        QueryMsg::GetOwner => to_binary(&query_get_owner(deps)?),
     }
 }
 
-pub fn query_property_info(deps: Deps, id: usize) -> StdResult<FlatInfo> {}
+fn query_get_owner(deps: Deps) -> StdResult<String> {}
 
-pub fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<usize>> {}
+fn query_property_info(deps: Deps, id: usize) -> StdResult<FlatInfo> {}
 
-pub fn query_get_total_property(deps: Deps) -> StdResult<usize> {}
+fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<usize>> {}
+
+fn query_get_total_property(deps: Deps) -> StdResult<usize> {}

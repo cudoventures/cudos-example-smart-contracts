@@ -32,4 +32,5 @@ pub enum QueryMsg {
     PropertyDetail(usize),
     ShowAllAvailableProperties,
     GetTotalProperties,
+    GetOwner,
 }
