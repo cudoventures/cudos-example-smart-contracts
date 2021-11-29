@@ -2,7 +2,7 @@
 
 # UseCase:
 
-Lease Management System is a smart contract where the owner of the contract can add different Renters. These renters can then list their properties in lease. Rentee can look into all the properties which are available and can lease any of the given properties. 5% of rent paid to the Renter goes to the Owner of the contract.
+Lease Management System is a smart contract where the owner of the contract can add different Renters. These Renters can then list their properties in lease. Rentee can look into all the properties which are available and can lease any of the given properties.
 
 # Requirements:
 
@@ -13,9 +13,9 @@ Lease Management System is a smart contract where the owner of the contract can 
 ## Renter Role
 
 - Can add multiple flats or houses for lease
-- Can terminate the lease. If renter accepted the rentee then renter can terminate the contract only if rentee defaults on rent.
-- Can accept rentee, If request for lease is raised by rentee and then renter need to accept that request inorder to rent property to rentee
-- Can reject rentee, If request for lease is raised by rentee and then renter need to reject that request inorder to make its property available for other rentee
+- Can terminate the lease. If the Renter accepted the Rentee then the Renter can terminate the contract only if Rentee defaults on rent.
+- Can accept Rentee, If the request for lease is raised by Rentee and then Renter need to accept that request to rent property to Rentee
+- Can reject Rentee, If the request for lease is raised by Rentee and then Renter need to reject that request to make its property available for other Rentees
 
 ## Rentee Role:
 
@@ -26,78 +26,81 @@ Lease Management System is a smart contract where the owner of the contract can 
 # Functions:
 
 - AddProperty(rent)
-
-  - **Properties**
-    - It is used to list the property for rent. The caller of this function will be the renter of that property.
-    - If the renter is listing property first time, will register as a renter else update list with newly listed properties
-    - Rent amount must be in the native currency of the chain ie.. cudos in this case.
+  - Properties
+    - It is used to list the property for rent. The caller of this function will be the Renter of that property.
+    - If the Renter is listing property first time, will register as a Renter else update the list with newly listed properties
+    - The rent amount must be in the native currency of the chain ie.. cudos in this case.
     - Property is assigned with propertyid
-    - PropertyId is auto-incremental id ie... if the contract has 100 properties (listed by different renter) then id would start from 1 to 100 and the next property id will be 101.
-
+    - PropertyId is auto-incremental id ie... if the contract has 100 properties (listed by a different Renter) then the id would start from 1 to 100 and the next property id will be 101.
 - RequestForLease(propertyId)
   - Properties
     - The caller of this function is Rentee who wants to rent a property and will pay rent + security in desired denomination mentioned in the contract ie.. native currency.
-    - Locks rent of the first month with a security deposit which is equivalent to one month rent to the contract ie.. rentee needs to lock 2x amount of rent.
+    - Locks rent of the first month with a security deposit which is equivalent to one month rent to the contract ie... Rentee needs to lock 2x amount of rent.
     - This rent of the first month + security is released when the Renter of the property accepts the rent.
-    - If amount provided by rentee is more than one month rent + security then refund the excess rent to the rentee.
+    - If the amount provided by the Rentee is more than one month’s rent + security then refund the excess rent to the Rentee.
   - Technical details
     - If the denomination of the amount passed is different as mentioned inside the contract then throw an error named **InvalidDenom.**
     - If property id is not present inside the contract then throw an error **NotFound.**
     - If the amount passed to this function is less than rent + security throw an error **LessThanRent.**
 - PayRent(propertyId)
   - Properties
-    - It can only be done after renter accepted the rentee.
-    - Can only be called by the rentee of the flat within completion of month.
-    - If rentee pay the rent after 1 month then it is expired.
-    - If rentee paid rent twice in the month then rentee agrement is valid for two months.
-    - If amount provided by rentee is more than one month rent then refund the excess rent to the rentee.
+    - It can only be done after the Renter accepted the Rentee.
+    - Can only be called by the Rentee of the flat within the completion of the month.
+    - If the Rentee pays the rent after 1 month then it is expired.
+    - If the Rentee paid rent twice in the month then the Rentee agreement is valid for two months.
+    - If the amount provided by the Rentee is more than one month’s rent then refund the excess rent to the Rentee.
   - Technical details
     - If the denomination of the amount passed is different as mentioned inside the contract then throw an error named **InvalidDenom.**
     - If property id is not present inside the contract then throw an error **NotFound.**
     - If the amount passed to this function is less than rent + security throw an error **LessThanRent.**
-    - If Rentee of the property and caller of the function is not same then throw error **InvalidRentee.**
+    - If Rentee of the property and caller of the function is not the same then throw the error **InvalidRentee.**
     - If expiration time does not exist then throw an error **ExpirationDoesNotExist.**
 - AcceptLease(propertyId)
   - Properties
     - Can be called only by Renter of the property
     - The rent of the first month locked inside the contract is released to the Renter
-    - Also update the expiration date with one month.
+    - Also, update the expiration date by one month.
   - Technical details
     - If property id is not present inside the contract then throw an error **NotFound.**
     - If Rentee of the property is not present then error **IsNotRented.**
-    - If caller is not Renter then throw error **InvalidRenter**
+    - If the caller is not Renter then throw error **InvalidRenter**
 - RejectLease(propertyId)
   - Properties
-    - It is used to reject the rentee and release the amount locked by the rentee for a given property.
+    - It is used to reject the Rentee and release the amount locked by the Rentee for a given property.
     - Can be called only by Renter of the property
     - The rent of the first month+security locked inside the contract is released to the Rentee
-    - Also update the expiration date with None.
-    - Update rentee with None.
+    - Also, update the expiration date with None.
+    - Update Rentee with None.
   - Technical details
     - If property id is not present inside the contract then throw an error **NotFound.**
     - If Rentee of the property is not present then error **IsNotRented.**
-    - If caller is not Renter then throw error **InvalidRenter**
+    - If the caller is not Renter then throw error **InvalidRenter**
 - TerminateLease(propertyId)
   - Properties
-    - can be called by Renter of the property and is used to terminate the lease only if Rentee defaults on any month rent.
-    - Release the security deposit to rentee.
+    - can be called by the Renter of the property and is used to terminate the lease only if Rentee defaults on any month’s rent.
+    - Release the security deposit to Rentee.
     - Update the expiration date with **None**
-    - Remove the rentee with that property id.
+    - Remove the Rentee with that property id.
   - Technical details
     - If property id is not present inside the contract then throw an error **NotFound.**
-    - If caller is not Renter then throw error **InvalidRenter**
-    - If rent agreement is not expired then Renter can not terminate the agreement and throw error **NotExpired.**
-    - If expiration date is not present then throw error **IsNotRented.**
-    - If rentee is not present then throw error **InvalidRentee.**
+    - If the caller is not Renter then throw error **InvalidRenter**
+    - If the rental agreement is not expired then Renter can not terminate the agreement and throw the error **NotExpired.**
+    - If an expiration date is not present then throw the error **IsNotRented.**
+    - If the Rentee is not present then throw the error **InvalidRentee.**
 - ShowAllAvailable()
   - Properties
-    - It is use to view unrented properties
+    - It is used to view unrented properties
 - ShowAllProperites()
   - Properties
     - It is used to view all properties.
 - PropertyInfo(id)
   - Properties
-    - It is to view owner, rentee and rent.
+    - It is to view Renter, Rentee, and rent.
+  - Technical details
+    - If id is not present then throw a **StdError::NotFound {kind: String::from("property not found"),}**
+- GetOwner
+  - Properties
+    - Get the address of the owner of the contract.
 
 # Guides
 
@@ -115,14 +118,12 @@ Lease Management System is a smart contract where the owner of the contract can 
   - [BankMsg](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/enum.BankMsg.html)
     - [Send](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/enum.BankMsg.html#variant.Send)
 - Rust
-  - Vec
-    - Vec manipulation
-      - [How to find whether given value exist inside vector or not?](https://stackoverflow.com/questions/58368801/how-do-i-check-if-a-thing-is-in-a-vector)
-  - Option
+  - [Vec](https://doc.rust-lang.org/rust-by-example/std/vec.html)
+  - [Option](https://doc.rust-lang.org/std/option/)
   - [Result](https://doc.rust-lang.org/std/result/)
-  - String
-  - Enum
-  - Struct
+  - [String](https://doc.rust-lang.org/rust-by-example/std/str.html)
+  - [Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html)
+  - [Struct](https://doc.rust-lang.org/book/ch05-01-defining-structs.html)
 - Package
   - [Cw0](https://docs.rs/cw0/0.10.3/cw0/)
     - [Duration](https://docs.rs/cw0/0.10.3/cw0/enum.Duration.html)
