@@ -40,8 +40,10 @@ Lease Management System is a smart contract where the owner of the contract can 
     - If the amount provided by the Rentee is more than one month’s rent + security then refund the excess rent to the Rentee.
   - Technical details
     - If the denomination of the amount passed is different as mentioned inside the contract then throw an error named **InvalidDenom.**
-    - If property id is not present inside the contract then throw an error **NotFound.**
-    - If the amount passed to this function is less than rent + security throw an error **LessThanRent.**
+    - If property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}**
+    - If the amount passed to this function is less than rent + security throw an error **StdError::overflow.**
+    - If property is already rented then throw an error **IsRented.**
+    - If property is already requested by some other other rentee and is not accepted by renter then throw **RenteeExist.**
 - PayRent(propertyId)
   - Properties
     - It can only be done after the Renter accepted the Rentee.
@@ -51,9 +53,10 @@ Lease Management System is a smart contract where the owner of the contract can 
     - If the amount provided by the Rentee is more than one month’s rent then refund the excess rent to the Rentee.
   - Technical details
     - If the denomination of the amount passed is different as mentioned inside the contract then throw an error named **InvalidDenom.**
-    - If property id is not present inside the contract then throw an error **NotFound.**
-    - If the amount passed to this function is less than rent + security throw an error **LessThanRent.**
+    - If property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}.**
+    - If the amount passed to this function is less than rent + security throw an error **StdError::overflow.**
     - If Rentee of the property and caller of the function is not the same then throw the error **InvalidRentee.**
+    - If rentee is not present on a given property and caller pay rent to this given id then throw error **IsNotRented.**
     - If expiration time does not exist then throw an error **ExpirationDoesNotExist.**
 - AcceptLease(propertyId)
   - Properties
@@ -72,9 +75,10 @@ Lease Management System is a smart contract where the owner of the contract can 
     - Also, update the expiration date with None.
     - Update Rentee with None.
   - Technical details
-    - If property id is not present inside the contract then throw an error **NotFound.**
+    - If property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}.**
     - If Rentee of the property is not present then error **IsNotRented.**
     - If the caller is not Renter then throw error **InvalidRenter**
+    - If already accepted by renter and then renter trying to reject the lease then throw error **IsAcceptedByRenter.**
 - TerminateLease(propertyId)
   - Properties
     - can be called by the Renter of the property and is used to terminate the lease only if Rentee defaults on any month’s rent.
@@ -82,25 +86,28 @@ Lease Management System is a smart contract where the owner of the contract can 
     - Update the expiration date with **None**
     - Remove the Rentee with that property id.
   - Technical details
-    - If property id is not present inside the contract then throw an error **NotFound.**
+    - If property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}.**
     - If the caller is not Renter then throw error **InvalidRenter**
     - If the rental agreement is not expired then Renter can not terminate the agreement and throw the error **NotExpired.**
     - If an expiration date is not present then throw the error **IsNotRented.**
-    - If the Rentee is not present then throw the error **InvalidRentee.**
 - ShowAllAvailable()
   - Properties
     - It is used to view unrented properties
-- ShowAllProperites()
+- GetTotalProperties()
   - Properties
-    - It is used to view all properties.
+    - It is used to view total number of properties.
 - PropertyInfo(id)
   - Properties
     - It is to view Renter, Rentee, and rent.
   - Technical details
-    - If id is not present then throw a **StdError::NotFound {kind: String::from("property not found"),}**
+    - If id is not present then throw a **StdError::NotFound {kind: String::from("Property not found"),}.**
 - GetOwner
   - Properties
     - Get the address of the owner of the contract.
+
+# Tips
+
+- **acudos** is the denomination of cudos-public-testnet
 
 # Guides
 
