@@ -34,7 +34,8 @@ fn add_property() {
         rent: Uint128::new(200),
     };
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-    let d = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    println!("working");
+    let d = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         d,
         FlatInfo {
@@ -52,7 +53,7 @@ fn add_property() {
         rent: Uint128::new(300),
     };
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-    let d = query_property_info(deps.as_ref(), Uint128::from(2u128)).unwrap();
+    let d = query_property_info(deps.as_ref(), usize::from(1u16)).unwrap();
     assert_eq!(
         d,
         FlatInfo {
@@ -77,7 +78,7 @@ fn request_lease() {
 
     // appropriate denom is not given
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -92,7 +93,7 @@ fn request_lease() {
 
     // id not present
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(2u128),
+        property_id: usize::from(2u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -103,11 +104,11 @@ fn request_lease() {
         }],
     );
     let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-    assert!(matches!(err, ContractError::Std(StdError::NotFound { .. })));
+    assert!(matches!(err, ContractError::NotFound {}));
 
     // Less than Rent error
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -118,11 +119,11 @@ fn request_lease() {
         }],
     );
     let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-    assert!(matches!(err, ContractError::Std(StdError::Overflow { .. })));
+    assert!(matches!(err, ContractError::LessThanRent {}));
 
     // Success response
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -136,7 +137,7 @@ fn request_lease() {
 
     // once requested cannot request again
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("new-rentee");
     let info = mock_info(
@@ -148,28 +149,6 @@ fn request_lease() {
     );
     let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
     assert_eq!(err, ContractError::RenteeExist {});
-
-    // if lease is accepted cannot request lease.
-    let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
-    };
-    let renter = String::from("renter");
-    let info = mock_info(renter.as_str(), &[]);
-    execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-    let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
-    };
-    let rentee = String::from("new-rentee");
-    let info = mock_info(
-        rentee.as_str(),
-        &[Coin {
-            amount: Uint128::new(200),
-            denom: String::from("acudos"),
-        }],
-    );
-    let err = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
-    assert_eq!(err, ContractError::IsRented {});
 }
 
 #[test]
@@ -186,7 +165,7 @@ fn accept_lease() {
 
     // if rentee is not present
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -195,20 +174,20 @@ fn accept_lease() {
 
     // request for lease
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(600u128, String::from("acudos")));
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
     let env = mock_env();
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-    let q = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    let q = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         q,
         FlatInfo {
@@ -221,7 +200,7 @@ fn accept_lease() {
 
     // invalid renter
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("new-renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -242,7 +221,7 @@ fn terminate_lease() {
 
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -256,7 +235,7 @@ fn terminate_lease() {
 
     // error if rentee is not accepted by renter then renter cannot terminate the lease.
     let msg = ExecuteMsg::TerminateLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -265,7 +244,7 @@ fn terminate_lease() {
     assert_eq!(err, ContractError::IsNotRented {});
 
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -274,7 +253,7 @@ fn terminate_lease() {
 
     // renter cannot terminate the lease if agreement is not expired
     let msg = ExecuteMsg::TerminateLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -285,7 +264,7 @@ fn terminate_lease() {
 
     // Success terminate, only possible if rentee lease is expired.
     let msg = ExecuteMsg::TerminateLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -307,7 +286,7 @@ fn pay_rent() {
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(
@@ -321,7 +300,7 @@ fn pay_rent() {
 
     // error if rentee trying to pay the rent without approval from renter
     let msg = ExecuteMsg::PayRent {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(200u128, "acudos"));
@@ -330,7 +309,7 @@ fn pay_rent() {
     assert_eq!(err, ContractError::ExpirationDoesNotExist {});
 
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -339,13 +318,13 @@ fn pay_rent() {
 
     // pay rent 1 time within the month end extends the expiry upto second month
     let msg = ExecuteMsg::PayRent {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(200u128, "acudos"));
     let env = mock_env();
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-    let q = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    let q = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         q,
         FlatInfo {
@@ -360,13 +339,13 @@ fn pay_rent() {
 
     // pay rent 2 time within the month end extends the expiry upto third month
     let msg = ExecuteMsg::PayRent {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(200u128, "acudos"));
     let env = mock_env();
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-    let q = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    let q = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         q,
         FlatInfo {
@@ -380,13 +359,13 @@ fn pay_rent() {
     );
     // error if less than requested rent is paid by the rentee.
     let msg = ExecuteMsg::PayRent {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(100u128, "acudos"));
     let env = mock_env();
     let err = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
-    assert!(matches!(err, ContractError::Std(StdError::Overflow { .. })));
+    assert!(matches!(err, ContractError::LessThanRent {}));
 }
 #[test]
 fn reject_lease() {
@@ -401,7 +380,7 @@ fn reject_lease() {
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
     // error if no rentee is requested for lease
     let msg = ExecuteMsg::RejectLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -411,7 +390,7 @@ fn reject_lease() {
 
     // error if invalid renter is trying to reject lease
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(400u128, "acudos"));
@@ -419,7 +398,7 @@ fn reject_lease() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let msg = ExecuteMsg::RejectLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("new-renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -429,13 +408,13 @@ fn reject_lease() {
 
     // successful rejection of request for lease by renter
     let msg = ExecuteMsg::RejectLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
     let env = mock_env();
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-    let q = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    let q = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         q,
         FlatInfo {
@@ -448,7 +427,7 @@ fn reject_lease() {
 
     // error if invalid renter trying to reject the rentee
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(400u128, "acudos"));
@@ -456,7 +435,7 @@ fn reject_lease() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let msg = ExecuteMsg::RejectLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("new-renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -466,7 +445,7 @@ fn reject_lease() {
 
     // error if rentee accepted by the renter then renter cannot reject it later
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -474,7 +453,7 @@ fn reject_lease() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let msg = ExecuteMsg::RejectLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -502,7 +481,7 @@ fn query_get_total_properties() {
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let total = query_get_total_property(deps.as_ref()).unwrap();
-    assert_eq!(total, Uint128::from(2u128));
+    assert_eq!(total, usize::from(2u16));
 }
 #[test]
 fn query_show_all_available() {
@@ -524,14 +503,14 @@ fn query_show_all_available() {
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let msg = ExecuteMsg::RequestForLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let rentee = String::from("rentee");
     let info = mock_info(rentee.as_str(), &coins(600u128, String::from("acudos")));
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
 
     let msg = ExecuteMsg::AcceptLease {
-        property_id: Uint128::from(1u128),
+        property_id: usize::from(0u16),
     };
     let renter = String::from("renter");
     let info = mock_info(renter.as_str(), &[]);
@@ -539,7 +518,7 @@ fn query_show_all_available() {
     execute(deps.as_mut(), env.clone(), info, msg).unwrap();
 
     let q = query_show_all_available_properties(deps.as_ref()).unwrap();
-    assert_eq!(q, vec![Uint128::from(2u128)]);
+    assert_eq!(q, vec![usize::from(2u16)]);
 }
 
 #[test]
@@ -560,7 +539,7 @@ fn query_property() {
         rent: Uint128::new(300),
     };
     execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-    let q = query_property_info(deps.as_ref(), Uint128::from(1u128)).unwrap();
+    let q = query_property_info(deps.as_ref(), usize::from(0u16)).unwrap();
     assert_eq!(
         q,
         FlatInfo {
@@ -570,11 +549,11 @@ fn query_property() {
             expires: None
         }
     );
-    let q = query_property_info(deps.as_ref(), Uint128::from(3u128)).unwrap_err();
+    let q = query_property_info(deps.as_ref(), usize::from(3u16)).unwrap_err();
     assert_eq!(
         q,
         StdError::NotFound {
-            kind: String::from("Property not found"),
+            kind: String::from("property not found"),
         }
     );
 }
