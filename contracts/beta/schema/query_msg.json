@@ -1,0 +1,55 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "QueryMsg",
+  "anyOf": [
+    {
+      "type": "object",
+      "required": [
+        "get_count"
+      ],
+      "properties": {
+        "get_count": {
+          "type": "object"
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "validate_game"
+      ],
+      "properties": {
+        "validate_game": {
+          "type": "object",
+          "required": [
+            "arr",
+            "is_cross"
+          ],
+          "properties": {
+            "arr": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxItems": 3,
+                "minItems": 3
+              },
+              "maxItems": 3,
+              "minItems": 3
+            },
+            "is_cross": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  ]
+}
