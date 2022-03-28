@@ -17,34 +17,41 @@
     {
       "type": "object",
       "required": [
-        "validate_game"
+        "get_winner"
       ],
       "properties": {
-        "validate_game": {
+        "get_winner": {
           "type": "object",
           "required": [
-            "arr",
-            "is_cross"
+            "game_id"
           ],
           "properties": {
-            "arr": {
-              "type": "array",
-              "items": {
-                "type": "array",
-                "items": {
-                  "type": [
-                    "boolean",
-                    "null"
-                  ]
-                },
-                "maxItems": 3,
-                "minItems": 3
-              },
-              "maxItems": 3,
-              "minItems": 3
-            },
-            "is_cross": {
-              "type": "boolean"
+            "game_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "query_game"
+      ],
+      "properties": {
+        "query_game": {
+          "type": "object",
+          "required": [
+            "game_id"
+          ],
+          "properties": {
+            "game_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
             }
           }
         }

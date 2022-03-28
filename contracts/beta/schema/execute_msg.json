@@ -34,6 +34,68 @@
         }
       },
       "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "create_game"
+      ],
+      "properties": {
+        "create_game": {
+          "type": "object",
+          "required": [
+            "nought",
+            "zero"
+          ],
+          "properties": {
+            "nought": {
+              "type": "string"
+            },
+            "zero": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "update_game"
+      ],
+      "properties": {
+        "update_game": {
+          "type": "object",
+          "required": [
+            "game_id",
+            "i",
+            "j",
+            "side"
+          ],
+          "properties": {
+            "game_id": {
+              "type": "integer",
+              "format": "uint64",
+              "minimum": 0.0
+            },
+            "i": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "j": {
+              "type": "integer",
+              "format": "uint",
+              "minimum": 0.0
+            },
+            "side": {
+              "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
     }
   ]
 }

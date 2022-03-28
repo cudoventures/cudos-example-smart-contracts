@@ -4,7 +4,7 @@ use cosmwasm_std::{
 
 use crate::error::ContractError;
 use crate::msg::{CountResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{State, STATE};
+use crate::state::{Game, State, GAME_MAP, STATE};
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
@@ -28,14 +28,70 @@ pub fn instantiate(
 #[entry_point]
 pub fn execute(
     deps: DepsMut,
-    _env: Env,
+    env: Env,
     info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::Increment {} => try_increment(deps),
         ExecuteMsg::Reset { count } => try_reset(deps, info, count),
+        ExecuteMsg::CreateGame { nought, zero } => try_create_game(deps, env, nought, zero),
+        ExecuteMsg::UpdateGame {
+            game_id,
+            side,
+            i,
+            j,
+        } => try_update_game(deps, info, game_id, i, j, side),
     }
+}
+
+pub fn try_update_game(
+    deps: DepsMut,
+    info: MessageInfo,
+    game_id: u64,
+    i: usize,
+    j: usize,
+    side: bool,
+) -> Result<Response, ContractError> {
+    let mut game = GAME_MAP
+        .may_load(deps.storage, game_id.to_string())?
+        .unwrap();
+    if game.next_move == side {
+        if side == true {
+            if game.nought != info.sender {
+                return Err(ContractError::Std(StdError::GenericErr {
+                    msg: String::from("sender is not a x"),
+                }));
+            }
+        } else {
+            if game.zero != info.sender {
+                return Err(ContractError::Std(StdError::GenericErr {
+                    msg: String::from("sender is not a 0"),
+                }));
+            }
+        }
+
+        let success = game.update_game(i, j, side);
+        if !success {
+            return Err(ContractError::Std(StdError::generic_err("illegal move")));
+        }
+        game.next_move = !side;
+    }
+    GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
+    Ok(Response::default())
+}
+
+pub fn try_create_game(
+    deps: DepsMut,
+    env: Env,
+    nought: String,
+    zero: String,
+) -> Result<Response, ContractError> {
+    let x_address = deps.api.addr_validate(nought.as_str()).unwrap();
+    let o_address = deps.api.addr_validate(zero.as_str()).unwrap();
+    let game = Game::new(&x_address, &o_address);
+    GAME_MAP.save(deps.storage, env.block.height.to_string(), &game)?;
+    Ok(Response::default().add_attribute(String::from("id"), env.block.height.to_string()))
 }
 
 pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
@@ -62,13 +118,30 @@ pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Respons
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
-        QueryMsg::ValidateGame { arr, is_cross } => to_binary(&validate_game(arr, is_cross)?),
+        QueryMsg::GetWinner { game_id } => to_binary(&get_winner(deps, game_id)?),
+        QueryMsg::QueryGame { game_id } => to_binary(&query_game(deps, game_id)?),
     }
 }
 
 fn query_count(deps: Deps) -> StdResult<CountResponse> {
     let state = STATE.load(deps.storage)?;
     Ok(CountResponse { count: state.count })
+}
+
+fn query_game(deps: Deps, game_id: u64) -> StdResult<Game> {
+    let game = GAME_MAP.load(deps.storage, game_id.to_string())?;
+    Ok(game)
+}
+
+fn get_winner(deps: Deps, game_id: u64) -> StdResult<String> {
+    let game = GAME_MAP.load(deps.storage, game_id.to_string())?;
+    if validate_game(game.game.clone(), true)? {
+        return Ok(String::from("Nought"));
+    }
+    if validate_game(game.game.clone(), false)? {
+        return Ok(String::from("Zought"));
+    }
+    Ok(String::from("Draw"))
 }
 
 fn validate_game(arr: [[Option<bool>; 3]; 3], is_cross: bool) -> StdResult<bool> {
@@ -172,9 +245,11 @@ fn is_not_empty(arr: &[[Option<bool>; 3]; 3]) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coins, from_binary};
+    use cosmwasm_std::{coins, from_binary, Addr, Api};
 
     #[test]
     fn proper_initialization() {
@@ -241,95 +316,55 @@ mod tests {
     }
 
     #[test]
-    fn test_validate() {
+    fn create_game() {
         let mut deps = mock_dependencies(&coins(2, "token"));
+
+        let nought = String::from("Nought");
+        let zero = String::from("zero");
 
         let msg = InstantiateMsg { count: 17 };
         let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let env = mock_env();
+        let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
 
-        let res = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::ValidateGame {
-                arr: [
-                    [Some(true), Some(true), Some(false)],
-                    [Some(true), Some(false), Some(true)],
-                    [Some(true), Some(false), Some(false)],
-                ],
-                is_cross: true,
-            },
-        )
-        .unwrap();
-        let value: bool = from_binary(&res).unwrap();
-        assert_eq!(value, true);
+        let msg = ExecuteMsg::CreateGame {
+            nought: nought.clone(),
+            zero: zero.clone(),
+        };
+        let info = mock_info("creator", &coins(2, "token"));
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        query_game(deps.as_ref(), env.block.height).unwrap();
 
-        // verifing diagonals
-        let res = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::ValidateGame {
-                arr: [
-                    [Some(false), Some(true), Some(true)],
-                    [Some(false), Some(false), Some(true)],
-                    [Some(true), Some(true), Some(false)],
-                ],
-                is_cross: false,
-            },
-        )
-        .unwrap();
-        let value: bool = from_binary(&res).unwrap();
-        assert_eq!(value, true);
-
-        // verifing rev diagonals
-        let res = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::ValidateGame {
-                arr: [
-                    [Some(true), Some(true), Some(false)],
-                    [Some(false), Some(false), Some(true)],
-                    [Some(false), Some(true), Some(true)],
-                ],
-                is_cross: false,
-            },
-        )
-        .unwrap();
-        let value: bool = from_binary(&res).unwrap();
-        assert_eq!(value, true);
-        // verifying row
-        let res = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::ValidateGame {
-                arr: [
-                    [Some(true), Some(true), Some(true)],
-                    [Some(false), Some(false), Some(true)],
-                    [Some(false), Some(false), Some(true)],
-                ],
-                is_cross: true,
-            },
-        )
-        .unwrap();
-        let value: bool = from_binary(&res).unwrap();
-        assert_eq!(value, true);
-
-        let res = query(
-            deps.as_ref(),
-            mock_env(),
-            QueryMsg::ValidateGame {
-                arr: [
-                    [Some(true), Some(true), Some(false)],
-                    [Some(true), Some(false), Some(true)],
-                    [Some(true), Some(false), None],
-                ],
-                is_cross: true,
-            },
-        )
-        .unwrap_err();
+        let msg = ExecuteMsg::UpdateGame {
+            game_id: env.block.height,
+            side: true,
+            i: 1,
+            j: 1,
+        };
+        let info = mock_info(&nought, &[]);
+        execute(deps.as_mut(), mock_env(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), env.block.height).unwrap();
+        let msg = ExecuteMsg::UpdateGame {
+            game_id: env.block.height,
+            side: false,
+            i: 1,
+            j: 1,
+        };
+        let info = mock_info(&nought, &[]);
+        let e = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
         assert_eq!(
-            res,
-            StdError::generic_err("Please check content of tic tac toe")
-        )
+            e,
+            ContractError::Std(StdError::generic_err("sender is not a 0"))
+        );
+        let msg = ExecuteMsg::UpdateGame {
+            game_id: env.block.height,
+            side: false,
+            i: 1,
+            j: 1,
+        };
+        let info = mock_info(&zero, &[]);
+        let e = execute(deps.as_mut(), mock_env(), info, msg).unwrap_err();
+        assert_eq!(e, ContractError::Std(StdError::generic_err("illegal move")));
+        
     }
 }
