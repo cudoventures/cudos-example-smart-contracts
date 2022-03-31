@@ -1,14 +1,14 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "ExecuteMsg",
+  "title": "QueryMsg",
   "anyOf": [
     {
       "type": "object",
       "required": [
-        "increment"
+        "get_count"
       ],
       "properties": {
-        "increment": {
+        "get_count": {
           "type": "object"
         }
       },
@@ -17,80 +17,74 @@
     {
       "type": "object",
       "required": [
-        "reset"
+        "get_winner"
       ],
       "properties": {
-        "reset": {
+        "get_winner": {
           "type": "object",
           "required": [
-            "count"
-          ],
-          "properties": {
-            "count": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "create_game"
-      ],
-      "properties": {
-        "create_game": {
-          "type": "object",
-          "required": [
-            "nought",
-            "zero"
-          ],
-          "properties": {
-            "nought": {
-              "type": "string"
-            },
-            "zero": {
-              "type": "string"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "update_game"
-      ],
-      "properties": {
-        "update_game": {
-          "type": "object",
-          "required": [
-            "game_id",
-            "i",
-            "j",
-            "side"
+            "game_id"
           ],
           "properties": {
             "game_id": {
               "type": "integer",
               "format": "uint64",
               "minimum": 0.0
-            },
-            "i": {
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "query_game"
+      ],
+      "properties": {
+        "query_game": {
+          "type": "object",
+          "required": [
+            "game_id"
+          ],
+          "properties": {
+            "game_id": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint64",
               "minimum": 0.0
-            },
-            "j": {
-              "type": "integer",
-              "format": "uint",
-              "minimum": 0.0
-            },
-            "side": {
-              "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "find_winner_using_board"
+      ],
+      "properties": {
+        "find_winner_using_board": {
+          "type": "object",
+          "required": [
+            "game"
+          ],
+          "properties": {
+            "game": {
+              "type": "array",
+              "items": {
+                "type": "array",
+                "items": {
+                  "type": [
+                    "boolean",
+                    "null"
+                  ]
+                },
+                "maxItems": 3,
+                "minItems": 3
+              },
+              "maxItems": 3,
+              "minItems": 3
             }
           }
         }
