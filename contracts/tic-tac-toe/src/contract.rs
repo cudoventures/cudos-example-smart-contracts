@@ -133,8 +133,8 @@ pub fn try_update_game(
     deps: DepsMut,
     info: MessageInfo,
     game_id: Uint128,
-    i: usize,
-    j: usize,
+    i: u16,
+    j: u16,
     side: bool,
 ) -> Result<Response, ContractError> {
     nonpayable(&info)?;
@@ -522,7 +522,7 @@ mod tests {
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
         assert_eq!(d.is_pending, false);
-        let following: [(&String, bool, usize, usize); 9] = [
+        let following: [(&String, bool, u16, u16); 9] = [
             (&nought, true, 0, 0),
             (&zero, false, 2, 0),
             (&nought, true, 0, 2),
@@ -590,7 +590,7 @@ mod tests {
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
         assert_eq!(d.is_pending, false);
-        let following: [(&String, bool, usize, usize); 9] = [
+        let following: [(&String, bool, u16, u16); 9] = [
             (&nought, true, 0, 0),
             (&zero, false, 2, 0),
             (&nought, true, 0, 2),
@@ -645,7 +645,7 @@ mod tests {
         };
         let info = mock_info(&zero, &[bet.clone()]);
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let following: [(&String, bool, usize, usize); 5] = [
+        let following: [(&String, bool, u16, u16); 5] = [
             (&nought, true, 0, 0),
             (&zero, false, 2, 0),
             (&nought, true, 0, 2),
@@ -696,7 +696,7 @@ mod tests {
         };
         let info = mock_info(&zero, &[bet.clone()]);
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let following: [(&String, bool, usize, usize); 4] = [
+        let following: [(&String, bool, u16, u16); 4] = [
             (&nought, true, 0, 0),
             (&zero, false, 2, 0),
             (&nought, true, 0, 2),

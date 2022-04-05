@@ -34,9 +34,9 @@ impl Game {
             is_completed: false,
         }
     }
-    pub fn update_game(&mut self, i: usize, j: usize, val: bool) -> bool {
-        if !self.is_pending && self.game[i][j] == None {
-            self.game[i][j] = Some(val);
+    pub fn update_game(&mut self, i: u16, j: u16, val: bool) -> bool {
+        if !self.is_pending && self.game[i as usize][j as usize] == None {
+            self.game[i as usize][j as usize] = Some(val);
             return true;
         }
         false

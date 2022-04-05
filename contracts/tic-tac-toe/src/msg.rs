@@ -29,8 +29,8 @@ pub enum ExecuteMsg {
     UpdateGame {
         game_id: Uint128,
         side: bool,
-        i: usize,
-        j: usize,
+        i: u16,
+        j: u16,
     },
 }
 
