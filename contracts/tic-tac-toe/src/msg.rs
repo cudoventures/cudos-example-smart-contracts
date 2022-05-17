@@ -2,23 +2,14 @@ use cosmwasm_std::{Coin, Uint128};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::state::GameBoard;
-
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
-pub struct InstantiateMsg {
-    pub count: i32,
-}
+pub struct InstantiateMsg {}
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecuteMsg {
-    Increment {},
-    Reset {
-        count: i32,
-    },
     CreateGame {
         bet: Coin,
-        zero: String,
     },
     JoinGame {
         game_id: Uint128,
@@ -32,16 +23,25 @@ pub enum ExecuteMsg {
         i: u16,
         j: u16,
     },
+    CancelGame {
+        game_id: Uint128,
+    },
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum QueryMsg {
-    // GetCount returns the current count as a json-encoded number
-    GetCount {},
-    GetWinner { game_id: Uint128 },
-    QueryGame { game_id: Uint128 },
-    // FindWinnerUsingBoard { game: GameBoard },
+    GetWinner {
+        game_id: Uint128,
+    },
+    QueryGame {
+        game_id: Uint128,
+    },
+    PendingGames {},
+    AllGames {
+        start_after: Option<String>,
+        limit: Option<u32>,
+    },
 }
 // We define a custom struct for each query response
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -51,8 +51,8 @@ pub struct CountResponse {
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
 pub enum GameResult {
+    Cross,
     Nought,
-    Zero,
     Draw,
     NoResult,
 }

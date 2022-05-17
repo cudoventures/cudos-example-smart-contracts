@@ -1,27 +1,26 @@
 use cosmwasm_std::{
-    coins, entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo,
+    coins, entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Order,
     Response, StdError, StdResult, Uint128,
 };
+use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
-use crate::msg::{CountResponse, ExecuteMsg, GameResult, InstantiateMsg, QueryMsg};
-use crate::state::{Game, GameBoard, State, GAME_MAP, STATE};
+use crate::msg::{ExecuteMsg, GameResult, InstantiateMsg, QueryMsg};
+use crate::state::{Game, GameBoard, GAME_MAP};
+
+// settings for pagination
+const MAX_LIMIT: u32 = 30;
+const DEFAULT_LIMIT: u32 = 10;
 
 // Note, you can use StdResult in some functions where you do not
 // make use of the custom errors
 #[entry_point]
 pub fn instantiate(
-    deps: DepsMut,
+    _deps: DepsMut,
     _env: Env,
-    info: MessageInfo,
-    msg: InstantiateMsg,
+    _info: MessageInfo,
+    _msg: InstantiateMsg,
 ) -> Result<Response, ContractError> {
-    let state = State {
-        count: msg.count,
-        owner: info.sender,
-    };
-    STATE.save(deps.storage, &state)?;
-
     Ok(Response::default())
 }
 
@@ -34,9 +33,7 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Increment {} => try_increment(deps),
-        ExecuteMsg::Reset { count } => try_reset(deps, info, count),
-        ExecuteMsg::CreateGame { bet, zero } => try_create_game(deps, env, info, zero, bet),
+        ExecuteMsg::CreateGame { bet } => try_create_game(deps, env, info, bet),
         ExecuteMsg::JoinGame { game_id } => try_join_game(deps, info, game_id),
         ExecuteMsg::WithdrawBet { game_id } => try_withdraw_bets(deps, info, game_id),
         ExecuteMsg::UpdateGame {
@@ -45,7 +42,34 @@ pub fn execute(
             i,
             j,
         } => try_update_game(deps, info, game_id, i, j, side),
+        ExecuteMsg::CancelGame { game_id } => try_cancel_game(deps, info, game_id),
     }
+}
+
+fn try_cancel_game(
+    deps: DepsMut,
+    info: MessageInfo,
+    game_id: Uint128,
+) -> Result<Response, ContractError> {
+    nonpayable(&info)?;
+    let mut game = GAME_MAP
+        .may_load(deps.storage, game_id.to_string())?
+        .unwrap();
+    if !game.is_pending {
+        return Err(ContractError::GameIsAlradyStarted {});
+    }
+    if game.is_completed {
+        return Err(ContractError::Std(StdError::generic_err("illegal move")));
+    }
+    if game.cross != info.sender {
+        return Err(ContractError::IsNotCreatorOfGame {});
+    }
+    game.complete_game();
+    GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
+    Ok(Response::new().add_message(BankMsg::Send {
+        to_address: game.cross.to_string(),
+        amount: vec![game.bet],
+    }))
 }
 
 fn try_withdraw_bets(
@@ -64,34 +88,50 @@ fn try_withdraw_bets(
     let res = Response::default();
     let game_bet = game.bet.amount.checked_mul(Uint128::from(2u128)).unwrap();
     match validated_game {
+        GameResult::Cross => {
+            game.complete_game();
+            GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
+            let msg = BankMsg::Send {
+                to_address: game.cross.to_string(),
+                amount: coins(game_bet.u128(), game.bet.denom),
+            };
+            Ok(res
+                .add_message(msg)
+                .add_attribute("to", game.cross.to_string())
+                .add_attribute("amount", game_bet.to_string()))
+        }
         GameResult::Nought => {
             game.complete_game();
             GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
             let msg = BankMsg::Send {
-                to_address: game.nought.to_string(),
+                to_address: game.nought.clone().unwrap().to_string(),
                 amount: coins(game_bet.u128(), game.bet.denom),
             };
             Ok(res
                 .add_message(msg)
-                .add_attribute("to", game.nought.to_string())
-                .add_attribute("amount", game_bet.to_string()))
-        }
-        GameResult::Zero => {
-            game.complete_game();
-            GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
-            let msg = BankMsg::Send {
-                to_address: game.zero.to_string(),
-                amount: coins(game_bet.u128(), game.bet.denom),
-            };
-            Ok(res
-                .add_message(msg)
-                .add_attribute("to", game.zero.to_string())
+                .add_attribute("to", game.nought.clone().unwrap().to_string())
                 .add_attribute("amount", game_bet.to_string()))
         }
         GameResult::Draw => {
             game.complete_game();
             GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
-            Ok(res)
+            let g = vec![game.bet];
+            Ok(res
+                .add_messages(vec![
+                    BankMsg::Send {
+                        to_address: game.nought.clone().unwrap().to_string(),
+                        amount: g.clone(),
+                    },
+                    BankMsg::Send {
+                        to_address: game.cross.to_string(),
+                        amount: g,
+                    },
+                ])
+                .add_attributes(vec![
+                    ("cross", game.cross.to_string()),
+                    ("nought", game.nought.clone().unwrap().to_string()),
+                    ("result", String::from("draw")),
+                ]))
         }
         GameResult::NoResult => Err(ContractError::Std(StdError::generic_err(
             "Game is not complete",
@@ -121,9 +161,13 @@ pub fn try_join_game(
     if !is_fund_present {
         return Err(ContractError::Unauthorized {});
     }
-    if !game.is_pending || game.is_completed || info.sender != game.zero {
+    if let Some(_) = game.nought {
         return Err(ContractError::Unauthorized {});
     }
+    if !game.is_pending || game.is_completed {
+        return Err(ContractError::Unauthorized {});
+    }
+    game.update_opponent(&info.sender);
     game.start_game();
     GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
     Ok(Response::default().add_attribute("game_id", game_id.to_string()))
@@ -145,13 +189,14 @@ pub fn try_update_game(
         return Err(ContractError::Unauthorized {});
     }
     if side == true {
-        if game.nought != info.sender {
+        if game.cross != info.sender {
             return Err(ContractError::Std(StdError::GenericErr {
                 msg: String::from("sender is not a x"),
             }));
         }
     } else {
-        if game.zero != info.sender {
+        let z_player = game.nought.clone().unwrap();
+        if z_player != info.sender {
             return Err(ContractError::Std(StdError::GenericErr {
                 msg: String::from("sender is not a 0"),
             }));
@@ -171,52 +216,32 @@ pub fn try_create_game(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    zero: String,
     bet: Coin,
 ) -> Result<Response, ContractError> {
     let is_fund_present = info.funds.iter().any(|funds| funds.eq(&bet));
     if !is_fund_present {
         return Err(ContractError::Unauthorized {});
     }
-    let o_address = deps.api.addr_validate(zero.as_str()).unwrap();
-    let game = Game::new(&info.sender, &o_address, &bet);
+    if GAME_MAP.has(deps.storage, env.block.height.to_string()) {
+        return Err(ContractError::Std(StdError::GenericErr {
+            msg: String::from("Game is already present at this id"),
+        }));
+    }
+    let game = Game::new(&info.sender, &bet);
     GAME_MAP.save(deps.storage, env.block.height.to_string(), &game)?;
     Ok(Response::default().add_attribute(String::from("id"), env.block.height.to_string()))
-}
-
-pub fn try_increment(deps: DepsMut) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        state.count += 1;
-        Ok(state)
-    })?;
-
-    Ok(Response::default())
-}
-
-pub fn try_reset(deps: DepsMut, info: MessageInfo, count: i32) -> Result<Response, ContractError> {
-    STATE.update(deps.storage, |mut state| -> Result<_, ContractError> {
-        if info.sender != state.owner {
-            return Err(ContractError::Unauthorized {});
-        }
-        state.count = count;
-        Ok(state)
-    })?;
-    Ok(Response::default())
 }
 
 #[entry_point]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::GetCount {} => to_binary(&query_count(deps)?),
         QueryMsg::GetWinner { game_id } => to_binary(&get_winner(deps, game_id)?),
         QueryMsg::QueryGame { game_id } => to_binary(&query_game(deps, game_id)?),
-        // QueryMsg::FindWinnerUsingBoard { game } => to_binary(&find_winner_by_board(game)?),
+        QueryMsg::AllGames { start_after, limit } => {
+            to_binary(&query_all_games(deps, start_after, limit)?)
+        }
+        QueryMsg::PendingGames {} => to_binary(&query_pending_games(deps)?), // QueryMsg::FindWinnerUsingBoard { game } => to_binary(&find_winner_by_board(game)?),
     }
-}
-
-fn query_count(deps: Deps) -> StdResult<CountResponse> {
-    let state = STATE.load(deps.storage)?;
-    Ok(CountResponse { count: state.count })
 }
 
 fn query_game(deps: Deps, game_id: Uint128) -> StdResult<Game> {
@@ -229,18 +254,45 @@ fn get_winner(deps: Deps, game_id: Uint128) -> StdResult<GameResult> {
     find_winner_by_board(game.game)
 }
 
+fn query_pending_games(deps: Deps) -> StdResult<Vec<String>> {
+    let game_ids: Result<Vec<_>, _> = GAME_MAP
+        .range(deps.storage, None, None, Order::Ascending)
+        .filter(|r| return r.as_ref().unwrap().1.is_pending)
+        .map(|r| r.unwrap().0)
+        .map(String::from_utf8)
+        .collect();
+    Ok(game_ids.unwrap_or(vec![]))
+}
+
+fn query_all_games(
+    deps: Deps,
+    start_after: Option<String>,
+    limit: Option<u32>,
+) -> StdResult<Vec<String>> {
+    let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
+    let start = start_after.map(Bound::exclusive);
+
+    let game_ids: Result<Vec<_>, _> = GAME_MAP
+        .keys(deps.storage, start, None, Order::Ascending)
+        .map(String::from_utf8)
+        .take(limit)
+        .collect();
+
+    Ok(game_ids.unwrap_or(vec![]))
+}
+
 fn find_winner_by_board(game: GameBoard) -> StdResult<GameResult> {
     if validate_game(game.clone(), true)? {
         if !is_valid_board(&game, false) {
             return Err(StdError::generic_err("Please check content of tic tac toe"));
         }
-        return Ok(GameResult::Nought);
+        return Ok(GameResult::Cross);
     }
     if validate_game(game.clone(), false)? {
         if !is_valid_board(&game, false) {
             return Err(StdError::generic_err("Please check content of tic tac toe"));
         }
-        return Ok(GameResult::Zero);
+        return Ok(GameResult::Nought);
     }
     if is_valid_board(&game, true) {
         Ok(GameResult::Draw)
@@ -360,121 +412,47 @@ fn is_valid_board(arr: &GameBoard, is_full_mode: bool) -> bool {
 mod tests {
     use super::*;
     use cosmwasm_std::testing::{mock_dependencies, mock_env, mock_info};
-    use cosmwasm_std::{coin, coins, from_binary, SubMsg};
-
-    #[test]
-    fn proper_initialization() {
-        let mut deps = mock_dependencies(&[]);
-
-        let msg = InstantiateMsg { count: 17 };
-        let info = mock_info("creator", &coins(1000, "earth"));
-
-        // we can just call .unwrap() to assert this was a success
-        let res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-        assert_eq!(0, res.messages.len());
-
-        // it worked, let's query the state
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(17, value.count);
-    }
-
-    #[test]
-    fn increment() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
-
-        let msg = InstantiateMsg { count: 17 };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Increment {};
-        let _res = execute(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // should increase counter by 1
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(18, value.count);
-    }
-
-    #[test]
-    fn reset() {
-        let mut deps = mock_dependencies(&coins(2, "token"));
-
-        let msg = InstantiateMsg { count: 17 };
-        let info = mock_info("creator", &coins(2, "token"));
-        let _res = instantiate(deps.as_mut(), mock_env(), info, msg).unwrap();
-
-        // beneficiary can release it
-        let unauth_info = mock_info("anyone", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let res = execute(deps.as_mut(), mock_env(), unauth_info, msg);
-        match res {
-            Err(ContractError::Unauthorized {}) => {}
-            _ => panic!("Must return unauthorized error"),
-        }
-
-        // only the original creator can reset the counter
-        let auth_info = mock_info("creator", &coins(2, "token"));
-        let msg = ExecuteMsg::Reset { count: 5 };
-        let _res = execute(deps.as_mut(), mock_env(), auth_info, msg).unwrap();
-
-        // should now be 5
-        let res = query(deps.as_ref(), mock_env(), QueryMsg::GetCount {}).unwrap();
-        let value: CountResponse = from_binary(&res).unwrap();
-        assert_eq!(5, value.count);
-    }
-
+    use cosmwasm_std::{coin, coins, SubMsg};
     #[test]
     fn create_game() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
-        let nought = String::from("Nought");
-        let zero = String::from("zero");
+        let cross = String::from("cross");
         let bet = coin(2u128, "cudos");
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {};
         let info = mock_info("creator", &[]);
         let env = mock_env();
         let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        let new_bet = coins(1u128, "cudos");
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &new_bet);
-        let mut env = mock_env();
-        env.block.height += 100u64;
+        let bet = coin(2u128, "cudos");
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &vec![bet]);
         let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
-        assert_eq!(res, ContractError::Unauthorized {});
+        assert_eq!(
+            res,
+            ContractError::Std(StdError::generic_err("Game is already present at this id"))
+        );
     }
     #[test]
     fn join_game() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
-        let nought = String::from("Nought");
-        let zero = String::from("zero");
+        let cross = String::from("cross");
+        let nought = String::from("nought");
         let bet = coin(2u128, "cudos");
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {};
         let info = mock_info("creator", &[]);
         let env = mock_env();
         let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
@@ -483,7 +461,7 @@ mod tests {
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
-        let info = mock_info(&zero, &[bet.clone()]);
+        let info = mock_info(&nought, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
@@ -494,19 +472,16 @@ mod tests {
     fn update_game() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
-        let nought = String::from("Nought");
-        let zero = String::from("zero");
+        let cross = String::from("cross");
+        let nought = String::from("nought");
         let bet = coin(2u128, "cudos");
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {};
         let info = mock_info("creator", &[]);
         let env = mock_env();
         let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
@@ -516,22 +491,22 @@ mod tests {
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
-        let info = mock_info(&zero, &[bet.clone()]);
+        let info = mock_info(&nought, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
         assert_eq!(d.is_pending, false);
         let following: [(&String, bool, u16, u16); 9] = [
-            (&nought, true, 0, 0),
-            (&zero, false, 2, 0),
-            (&nought, true, 0, 2),
-            (&zero, false, 1, 0),
-            (&nought, true, 1, 2),
-            (&zero, false, 1, 1),
-            (&nought, true, 2, 2),
-            (&zero, false, 2, 1),
-            (&nought, true, 0, 1),
+            (&cross, true, 0, 0),
+            (&nought, false, 2, 0),
+            (&cross, true, 0, 2),
+            (&nought, false, 1, 0),
+            (&cross, true, 1, 2),
+            (&nought, false, 1, 1),
+            (&cross, true, 2, 2),
+            (&nought, false, 2, 1),
+            (&cross, true, 0, 1),
         ];
         for (sender, com, i, j) in following {
             let msg = ExecuteMsg::UpdateGame {
@@ -550,7 +525,7 @@ mod tests {
             i: 0,
             j: 0,
         };
-        let info = mock_info(&zero, &[]);
+        let info = mock_info(&nought, &[]);
         let env = mock_env();
         let res = execute(deps.as_mut(), env, info, msg).unwrap_err();
         assert_eq!(
@@ -562,19 +537,16 @@ mod tests {
     fn withdraw_bet() {
         let mut deps = mock_dependencies(&coins(2, "token"));
 
-        let nought = String::from("Nought");
-        let zero = String::from("zero");
+        let cross = String::from("cross");
+        let nought = String::from("nought");
         let bet = coin(2u128, "cudos");
 
-        let msg = InstantiateMsg { count: 17 };
+        let msg = InstantiateMsg {};
         let info = mock_info("creator", &[]);
         let env = mock_env();
         let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
@@ -584,22 +556,22 @@ mod tests {
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
-        let info = mock_info(&zero, &[bet.clone()]);
+        let info = mock_info(&nought, &[bet.clone()]);
         let env = mock_env();
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
         assert_eq!(d.is_pending, false);
         let following: [(&String, bool, u16, u16); 9] = [
-            (&nought, true, 0, 0),
-            (&zero, false, 2, 0),
-            (&nought, true, 0, 2),
-            (&zero, false, 1, 0),
-            (&nought, true, 1, 2),
-            (&zero, false, 1, 1),
-            (&nought, true, 2, 2),
-            (&zero, false, 2, 1),
-            (&nought, true, 0, 1),
+            (&cross, true, 0, 0),
+            (&nought, false, 2, 0),
+            (&cross, true, 0, 2),
+            (&nought, false, 1, 0),
+            (&cross, true, 1, 2),
+            (&nought, false, 1, 1),
+            (&cross, true, 2, 2),
+            (&nought, false, 2, 1),
+            (&cross, true, 0, 1),
         ];
         for (sender, com, i, j) in following {
             let msg = ExecuteMsg::UpdateGame {
@@ -620,18 +592,15 @@ mod tests {
         assert_eq!(
             &res.messages[0],
             &SubMsg::new(BankMsg::Send {
-                to_address: nought.to_string(),
+                to_address: cross.to_string(),
                 amount: coins(4u128, "cudos"),
             })
         );
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         assert_eq!(d.is_completed, true);
 
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let mut env = mock_env();
         env.block.height += 100u64;
 
@@ -643,14 +612,14 @@ mod tests {
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
-        let info = mock_info(&zero, &[bet.clone()]);
+        let info = mock_info(&nought, &[bet.clone()]);
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let following: [(&String, bool, u16, u16); 5] = [
-            (&nought, true, 0, 0),
-            (&zero, false, 2, 0),
-            (&nought, true, 0, 2),
-            (&zero, false, 1, 0),
-            (&nought, true, 0, 1),
+            (&cross, true, 0, 0),
+            (&nought, false, 2, 0),
+            (&cross, true, 0, 2),
+            (&nought, false, 1, 0),
+            (&cross, true, 0, 1),
         ];
         for (sender, com, i, j) in following {
             let msg = ExecuteMsg::UpdateGame {
@@ -671,18 +640,15 @@ mod tests {
         assert_eq!(
             &res.messages[0],
             &SubMsg::new(BankMsg::Send {
-                to_address: nought.to_string(),
+                to_address: cross.to_string(),
                 amount: coins(4u128, "cudos"),
             })
         );
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         assert_eq!(d.is_completed, true);
 
-        let msg = ExecuteMsg::CreateGame {
-            bet: bet.clone(),
-            zero: zero.clone(),
-        };
-        let info = mock_info(&nought, &[bet.clone()]);
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
         let mut env = mock_env();
         env.block.height += 1001u64;
 
@@ -694,13 +660,13 @@ mod tests {
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
-        let info = mock_info(&zero, &[bet.clone()]);
+        let info = mock_info(&nought, &[bet.clone()]);
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let following: [(&String, bool, u16, u16); 4] = [
-            (&nought, true, 0, 0),
-            (&zero, false, 2, 0),
-            (&nought, true, 0, 2),
-            (&zero, false, 1, 0),
+            (&cross, true, 0, 0),
+            (&nought, false, 2, 0),
+            (&cross, true, 0, 2),
+            (&nought, false, 1, 0),
         ];
         for (sender, com, i, j) in following {
             let msg = ExecuteMsg::UpdateGame {
@@ -722,5 +688,59 @@ mod tests {
             res,
             ContractError::Std(StdError::generic_err("Game is not complete"))
         )
+    }
+
+    #[test]
+    fn pending_game() {
+        let mut deps = mock_dependencies(&coins(2, "token"));
+
+        let cross = String::from("cross");
+        let nought = String::from("nought");
+        let bet = coin(2u128, "cudos");
+
+        let msg = InstantiateMsg {};
+        let info = mock_info("creator", &[]);
+        let env = mock_env();
+        let _res = instantiate(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
+        let env = mock_env();
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
+        matches!(d, Game { .. });
+        assert_eq!(d.is_pending, true);
+
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
+        let mut env = mock_env();
+        env.block.height += 100u64;
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
+        matches!(d, Game { .. });
+        assert_eq!(d.is_pending, true);
+
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &[bet.clone()]);
+        let mut env = mock_env();
+        env.block.height += 200u64;
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
+        matches!(d, Game { .. });
+        assert_eq!(d.is_pending, true);
+
+        let msg = ExecuteMsg::JoinGame {
+            game_id: Uint128::from(env.clone().block.height),
+        };
+        let info = mock_info(&nought, &[bet.clone()]);
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
+        matches!(d, Game { .. });
+        assert_eq!(d.is_pending, false);
+
+        let _d = query_pending_games(deps.as_ref()).unwrap();
+        matches!(
+            vec!["12345", "12445"],
+            _d
+        );
     }
 }

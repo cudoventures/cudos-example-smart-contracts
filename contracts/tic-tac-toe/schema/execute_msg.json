@@ -5,54 +5,17 @@
     {
       "type": "object",
       "required": [
-        "increment"
-      ],
-      "properties": {
-        "increment": {
-          "type": "object"
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
-        "reset"
-      ],
-      "properties": {
-        "reset": {
-          "type": "object",
-          "required": [
-            "count"
-          ],
-          "properties": {
-            "count": {
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        }
-      },
-      "additionalProperties": false
-    },
-    {
-      "type": "object",
-      "required": [
         "create_game"
       ],
       "properties": {
         "create_game": {
           "type": "object",
           "required": [
-            "bet",
-            "zero"
+            "bet"
           ],
           "properties": {
             "bet": {
               "$ref": "#/definitions/Coin"
-            },
-            "zero": {
-              "type": "string"
             }
           }
         }
@@ -72,9 +35,7 @@
           ],
           "properties": {
             "game_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
@@ -94,9 +55,7 @@
           ],
           "properties": {
             "game_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
@@ -119,22 +78,40 @@
           ],
           "properties": {
             "game_id": {
-              "type": "integer",
-              "format": "uint64",
-              "minimum": 0.0
+              "$ref": "#/definitions/Uint128"
             },
             "i": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint16",
               "minimum": 0.0
             },
             "j": {
               "type": "integer",
-              "format": "uint",
+              "format": "uint16",
               "minimum": 0.0
             },
             "side": {
               "type": "boolean"
+            }
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    {
+      "type": "object",
+      "required": [
+        "cancel_game"
+      ],
+      "properties": {
+        "cancel_game": {
+          "type": "object",
+          "required": [
+            "game_id"
+          ],
+          "properties": {
+            "game_id": {
+              "$ref": "#/definitions/Uint128"
             }
           }
         }
