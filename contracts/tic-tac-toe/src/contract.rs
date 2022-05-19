@@ -257,7 +257,7 @@ fn get_winner(deps: Deps, game_id: Uint128) -> StdResult<GameResult> {
 fn query_pending_games(deps: Deps) -> StdResult<Vec<String>> {
     let game_ids: Result<Vec<_>, _> = GAME_MAP
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|r| return r.as_ref().unwrap().1.is_pending)
+        .filter(|r| return r.as_ref().unwrap().1.is_pending && !r.as_ref().unwrap().1.is_completed)
         .map(|r| r.unwrap().0)
         .map(String::from_utf8)
         .collect();
@@ -738,9 +738,24 @@ mod tests {
         assert_eq!(d.is_pending, false);
 
         let _d = query_pending_games(deps.as_ref()).unwrap();
-        matches!(
-            vec!["12345", "12445"],
-            _d
-        );
+        matches!(vec!["12345", "12445"], _d);
+
+        let msg = ExecuteMsg::CancelGame {
+            game_id: Uint128::from(12345u128),
+        };
+        let info = mock_info(&cross, &[]);
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
+        let d = query_game(deps.as_ref(), Uint128::from(12345u128)).unwrap();
+        matches!(d, Game { .. });
+        assert_eq!(d.is_completed, true);
+        let _d = query_pending_games(deps.as_ref()).unwrap();
+        matches!(vec!["12445"], _d);
+
+        let msg = ExecuteMsg::JoinGame {
+            game_id: Uint128::from(12345u128),
+        };
+        let info = mock_info(&nought, &[bet.clone()]);
+        let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        matches!(_res, ContractError::Unauthorized {});
     }
 }

@@ -535,7 +535,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "tic-tact-toe"
+name = "tic-tac-toe"
 version = "0.1.0"
 dependencies = [
  "cosmwasm-schema",
