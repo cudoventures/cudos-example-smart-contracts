@@ -56,13 +56,15 @@ fn try_cancel_game(
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
     if !game.is_pending {
-        return Err(ContractError::GameIsAlradyStarted {});
+        return Err(ContractError::Std(StdError::generic_err("Game is started")));
     }
     if game.is_completed {
-        return Err(ContractError::Std(StdError::generic_err("illegal move")));
+        return Err(ContractError::Std(StdError::generic_err(
+            "Game is already completed",
+        )));
     }
     if game.cross != info.sender {
-        return Err(ContractError::IsNotCreatorOfGame {});
+        return Err(ContractError::Unauthorized {});
     }
     game.complete_game();
     GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
@@ -218,9 +220,15 @@ pub fn try_create_game(
     info: MessageInfo,
     bet: Coin,
 ) -> Result<Response, ContractError> {
-    let is_fund_present = info.funds.iter().any(|funds| funds.eq(&bet));
-    if !is_fund_present {
-        return Err(ContractError::Unauthorized {});
+    if info.funds.len() != 1 {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Exactly 1 coin should be present inside the funds",
+        )));
+    }
+    if !info.funds[0].eq(&bet) {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Funds provided are not equivalent with bet",
+        )));
     }
     if GAME_MAP.has(deps.storage, env.block.height.to_string()) {
         return Err(ContractError::Std(StdError::GenericErr {
@@ -437,6 +445,27 @@ mod tests {
         assert_eq!(
             res,
             ContractError::Std(StdError::generic_err("Game is already present at this id"))
+        );
+        let bet = coin(2u128, "cudos");
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &vec![bet.clone(), bet.clone()]);
+        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        assert_eq!(
+            res,
+            ContractError::Std(StdError::generic_err(
+                "Exactly 1 coin should be present inside the funds"
+            ))
+        );
+
+        let bet = coin(2u128, "cudos");
+        let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
+        let info = mock_info(&cross, &coins(1u128, "cudos"));
+        let res = execute(deps.as_mut(), env.clone(), info, msg).unwrap_err();
+        assert_eq!(
+            res,
+            ContractError::Std(StdError::generic_err(
+                "Funds provided are not equivalent with bet",
+            ))
         );
     }
     #[test]
