@@ -39,7 +39,7 @@ pub enum QueryMsg {
     },
     PendingGames {},
     AllGames {
-        start_after: Option<String>,
+        start_after: Option<Uint128>,
         limit: Option<u32>,
     },
 }

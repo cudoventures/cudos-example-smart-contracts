@@ -284,11 +284,11 @@ fn query_pending_games(deps: Deps) -> StdResult<Vec<String>> {
 
 fn query_all_games(
     deps: Deps,
-    start_after: Option<String>,
+    start_after: Option<Uint128>,
     limit: Option<u32>,
 ) -> StdResult<Vec<String>> {
     let limit = limit.unwrap_or(DEFAULT_LIMIT).min(MAX_LIMIT) as usize;
-    let start = start_after.map(Bound::exclusive);
+    let start = start_after.map(|s| Bound::exclusive(s.to_string()));
 
     let game_ids: Result<Vec<_>, _> = GAME_MAP
         .keys(deps.storage, start, None, Order::Ascending)

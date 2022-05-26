@@ -72,9 +72,13 @@
               "minimum": 0.0
             },
             "start_after": {
-              "type": [
-                "string",
-                "null"
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Uint128"
+                },
+                {
+                  "type": "null"
+                }
               ]
             }
           }
