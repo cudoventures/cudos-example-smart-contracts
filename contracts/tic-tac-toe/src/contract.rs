@@ -55,20 +55,20 @@ fn try_cancel_game(
     let mut game = GAME_MAP
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
-    if game.state == GameState::Pending {
-        if game.cross != info.sender {
-            return Err(ContractError::Unauthorized {});
-        }
-        game.complete_game();
-        GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
-        return Ok(Response::new().add_message(BankMsg::Send {
-            to_address: game.cross.to_string(),
-            amount: vec![game.bet],
-        }));
+    if game.state != GameState::Pending {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Game is not in Pending",
+        )));
     }
-    Err(ContractError::Std(StdError::generic_err(
-        "Game is not in Pending",
-    )))
+    if game.cross != info.sender {
+        return Err(ContractError::Unauthorized {});
+    }
+    game.complete_game();
+    GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
+    return Ok(Response::new().add_message(BankMsg::Send {
+        to_address: game.cross.to_string(),
+        amount: vec![game.bet],
+    }));
 }
 
 fn try_withdraw_bets(
