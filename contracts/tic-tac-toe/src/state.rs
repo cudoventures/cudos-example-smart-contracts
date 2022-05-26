@@ -9,6 +9,12 @@ pub struct COUNTER {
     pub count: i32,
     pub owner: Addr,
 }
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
+pub enum GameState {
+    Pending,
+    Started,
+    Completed
+}
 
 pub type GameBoard = [[Option<bool>; 3]; 3];
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq, JsonSchema)]
@@ -18,8 +24,7 @@ pub struct Game {
     pub cross: Addr,
     pub nought: Option<Addr>,
     pub bet: Coin,
-    pub is_pending: bool,
-    pub is_completed: bool,
+    pub state: GameState,
 }
 
 impl Game {
@@ -30,15 +35,14 @@ impl Game {
             cross: cross.clone(),
             bet: bet.clone(),
             nought: None,
-            is_pending: true,
-            is_completed: false,
+            state: GameState::Pending,
         }
     }
     pub fn update_opponent(&mut self, nought: &Addr) {
         self.nought = Some(nought.clone());
     }
     pub fn update_game(&mut self, i: u16, j: u16, val: bool) -> bool {
-        if !self.is_pending && self.game[i as usize][j as usize] == None {
+        if self.state == GameState::Started && self.game[i as usize][j as usize] == None {
             self.game[i as usize][j as usize] = Some(val);
             return true;
         }
@@ -48,10 +52,10 @@ impl Game {
         self.next_move = !self.next_move;
     }
     pub fn start_game(&mut self) {
-        self.is_pending = false;
+        self.state = GameState::Started;
     }
     pub fn complete_game(&mut self) {
-        self.is_completed = true;
+        self.state = GameState::Completed;
     }
 }
 pub const GAME_MAP: Map<String, Game> = Map::new("game_map");

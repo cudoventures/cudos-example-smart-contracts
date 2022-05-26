@@ -6,7 +6,7 @@ use cw_storage_plus::Bound;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, GameResult, InstantiateMsg, QueryMsg};
-use crate::state::{Game, GameBoard, GAME_MAP};
+use crate::state::{Game, GameBoard, GameState, GAME_MAP};
 
 // settings for pagination
 const MAX_LIMIT: u32 = 30;
@@ -55,23 +55,20 @@ fn try_cancel_game(
     let mut game = GAME_MAP
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
-    if !game.is_pending {
-        return Err(ContractError::Std(StdError::generic_err("Game is started")));
+    if game.state == GameState::Pending {
+        if game.cross != info.sender {
+            return Err(ContractError::Unauthorized {});
+        }
+        game.complete_game();
+        GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
+        return Ok(Response::new().add_message(BankMsg::Send {
+            to_address: game.cross.to_string(),
+            amount: vec![game.bet],
+        }));
     }
-    if game.is_completed {
-        return Err(ContractError::Std(StdError::generic_err(
-            "Game is already completed",
-        )));
-    }
-    if game.cross != info.sender {
-        return Err(ContractError::Unauthorized {});
-    }
-    game.complete_game();
-    GAME_MAP.save(deps.storage, game_id.to_string(), &game)?;
-    Ok(Response::new().add_message(BankMsg::Send {
-        to_address: game.cross.to_string(),
-        amount: vec![game.bet],
-    }))
+    Err(ContractError::Std(StdError::generic_err(
+        "Game is not in Pending",
+    )))
 }
 
 fn try_withdraw_bets(
@@ -83,8 +80,10 @@ fn try_withdraw_bets(
     let mut game = GAME_MAP
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
-    if game.is_completed || game.is_pending {
-        return Err(ContractError::Unauthorized {});
+    if game.state != GameState::Started {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Game is Pending or Completed",
+        )));
     }
     let validated_game = find_winner_by_board(game.game)?;
     let res = Response::default();
@@ -159,14 +158,18 @@ pub fn try_join_game(
     let mut game = GAME_MAP
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
+    if game.state != GameState::Pending {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Game is not in Pending state",
+        )));
+    }
     let is_fund_present = info.funds.iter().any(|funds| funds.eq(&game.bet));
     if !is_fund_present {
-        return Err(ContractError::Unauthorized {});
+        return Err(ContractError::Std(StdError::generic_err(
+            "Pass the correct funds",
+        )));
     }
     if let Some(_) = game.nought {
-        return Err(ContractError::Unauthorized {});
-    }
-    if !game.is_pending || game.is_completed {
         return Err(ContractError::Unauthorized {});
     }
     game.update_opponent(&info.sender);
@@ -187,8 +190,15 @@ pub fn try_update_game(
     let mut game = GAME_MAP
         .may_load(deps.storage, game_id.to_string())?
         .unwrap();
-    if game.is_pending || game.is_completed || game.next_move != side {
-        return Err(ContractError::Unauthorized {});
+    if game.state != GameState::Started {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Game is not started or already finished",
+        )));
+    }
+    if game.next_move != side {
+        return Err(ContractError::Std(StdError::generic_err(
+            "Next Move and provided Move are not same",
+        )));
     }
     if side == true {
         if game.cross != info.sender {
@@ -265,7 +275,7 @@ fn get_winner(deps: Deps, game_id: Uint128) -> StdResult<GameResult> {
 fn query_pending_games(deps: Deps) -> StdResult<Vec<String>> {
     let game_ids: Result<Vec<_>, _> = GAME_MAP
         .range(deps.storage, None, None, Order::Ascending)
-        .filter(|r| return r.as_ref().unwrap().1.is_pending && !r.as_ref().unwrap().1.is_completed)
+        .filter(|r| return r.as_ref().unwrap().1.state == GameState::Pending)
         .map(|r| r.unwrap().0)
         .map(String::from_utf8)
         .collect();
@@ -486,7 +496,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
         };
@@ -495,7 +505,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, false);
+        assert_eq!(d.state, GameState::Started);
     }
     #[test]
     fn update_game() {
@@ -515,7 +525,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
@@ -525,7 +535,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, false);
+        assert_eq!(d.state, GameState::Started);
         let following: [(&String, bool, u16, u16); 9] = [
             (&cross, true, 0, 0),
             (&nought, false, 2, 0),
@@ -580,7 +590,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
@@ -590,7 +600,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, false);
+        assert_eq!(d.state, GameState::Started);
         let following: [(&String, bool, u16, u16); 9] = [
             (&cross, true, 0, 0),
             (&nought, false, 2, 0),
@@ -626,7 +636,7 @@ mod tests {
             })
         );
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
-        assert_eq!(d.is_completed, true);
+        assert_eq!(d.state, GameState::Completed);
 
         let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
         let info = mock_info(&cross, &[bet.clone()]);
@@ -636,7 +646,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
@@ -674,7 +684,7 @@ mod tests {
             })
         );
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
-        assert_eq!(d.is_completed, true);
+        assert_eq!(d.state, GameState::Completed);
 
         let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
         let info = mock_info(&cross, &[bet.clone()]);
@@ -684,7 +694,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.block.height),
@@ -737,7 +747,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
         let info = mock_info(&cross, &[bet.clone()]);
@@ -746,7 +756,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::CreateGame { bet: bet.clone() };
         let info = mock_info(&cross, &[bet.clone()]);
@@ -755,7 +765,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, true);
+        assert_eq!(d.state, GameState::Pending);
 
         let msg = ExecuteMsg::JoinGame {
             game_id: Uint128::from(env.clone().block.height),
@@ -764,7 +774,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(env.block.height)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_pending, false);
+        assert_eq!(d.state, GameState::Started);
 
         let _d = query_pending_games(deps.as_ref()).unwrap();
         matches!(vec!["12345", "12445"], _d);
@@ -776,7 +786,7 @@ mod tests {
         let _res = execute(deps.as_mut(), env.clone(), info, msg).unwrap();
         let d = query_game(deps.as_ref(), Uint128::from(12345u128)).unwrap();
         matches!(d, Game { .. });
-        assert_eq!(d.is_completed, true);
+        assert_eq!(d.state, GameState::Completed);
         let _d = query_pending_games(deps.as_ref()).unwrap();
         matches!(vec!["12445"], _d);
 
