@@ -5,7 +5,7 @@ use cosmwasm_std::{
     entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response,
     StdError, StdResult, Uint128,
 };
-use cw0::{Duration, Expiration};
+use cw_utils::{Duration, Expiration};
 
 use crate::{
     msg::{ExecuteMsg, InstantiateMsg, QueryMsg},

@@ -14,7 +14,7 @@ use cosmwasm_std::{
     StdError, Uint128,
 };
 use cosmwasm_std::{Coin, DepsMut};
-use cw0::Expiration;
+use cw_utils::Expiration;
 
 fn do_instantiate(deps: DepsMut, owner: &String) {
     let msg = InstantiateMsg {};
@@ -24,7 +24,7 @@ fn do_instantiate(deps: DepsMut, owner: &String) {
 
 #[test]
 fn add_property() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
 
@@ -66,7 +66,7 @@ fn add_property() {
 }
 #[test]
 fn request_lease() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -153,7 +153,7 @@ fn request_lease() {
 
 #[test]
 fn accept_lease() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -210,7 +210,7 @@ fn accept_lease() {
 
 #[test]
 fn terminate_lease() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -275,7 +275,7 @@ fn terminate_lease() {
 
 #[test]
 fn pay_rent() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -369,7 +369,7 @@ fn pay_rent() {
 }
 #[test]
 fn reject_lease() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -463,7 +463,7 @@ fn reject_lease() {
 }
 #[test]
 fn query_get_total_properties() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -485,7 +485,7 @@ fn query_get_total_properties() {
 }
 #[test]
 fn query_show_all_available() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
@@ -523,7 +523,7 @@ fn query_show_all_available() {
 
 #[test]
 fn query_property() {
-    let mut deps = mock_dependencies(&[]);
+    let mut deps = mock_dependencies();
     let owner = String::from("owner");
     do_instantiate(deps.as_mut(), &owner);
     let renter = String::from("renter");
