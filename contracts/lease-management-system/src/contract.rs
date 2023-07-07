@@ -374,7 +374,7 @@ fn execute_terminate_lease(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, _info: MessageInfo, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
         QueryMsg::PropertyDetail(id) => to_binary(&query_property_info(deps, id)?),
         QueryMsg::ShowAllAvailableProperties => {
