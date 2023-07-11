@@ -111,19 +111,19 @@ Lease Management System is a smart contract where the owner of the contract can 
 
 # Guides
 
-- [Cosmwasm-storage](https://docs.rs/cw-storage-plus/0.10.3/cw_storage_plus/)
-  - [Item](https://docs.rs/cw-storage-plus/0.10.3/cw_storage_plus/struct.Item.html)
-  - [Map](https://crates.io/crates/cw-storage-plus/0.5.0)
-- [Cosmwasm-std](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/)
-  - [entry_point](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/macro.create_entry_points.html)
-  - [to_binary](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/fn.to_binary.html)
-  - [Uint128](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/struct.Uint128.html)
-  - [DepsMut](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/struct.DepsMut.html)
-  - [Deps](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/struct.Deps.html)
-  - [Env](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/struct.Env.html)
-  - [MessageInfo](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/struct.MessageInfo.html)
-  - [BankMsg](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/enum.BankMsg.html)
-    - [Send](https://docs.rs/cosmwasm-std/0.16.0/cosmwasm_std/enum.BankMsg.html#variant.Send)
+- [Cosmwasm-storage](https://docs.rs/cw-storage-plus/1.1.0/cw_storage_plus/)
+  - [Item](https://docs.rs/cw-storage-plus/1.1.0/cw_storage_plus/struct.Item.html)
+  - [Map](https://docs.rs/cw-storage-plus/1.1.0/cw_storage_plus/struct.Map.html)
+- [Cosmwasm-std](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/)
+  - [entry_point](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/macro.create_entry_points.html)
+  - [to_binary](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/fn.to_binary.html)
+  - [Uint128](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/struct.Uint128.html)
+  - [DepsMut](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/struct.DepsMut.html)
+  - [Deps](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/struct.Deps.html)
+  - [Env](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/struct.Env.html)
+  - [MessageInfo](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/struct.MessageInfo.html)
+  - [BankMsg](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/enum.BankMsg.html)
+    - [Send](https://docs.rs/cosmwasm-std/1.2.0/cosmwasm_std/enum.BankMsg.html#variant.Send)
 - Rust
   - [Vec](https://doc.rust-lang.org/rust-by-example/std/vec.html)
   - [Option](https://doc.rust-lang.org/std/option/)
@@ -132,6 +132,38 @@ Lease Management System is a smart contract where the owner of the contract can 
   - [Enum](https://doc.rust-lang.org/book/ch06-01-defining-an-enum.html)
   - [Struct](https://doc.rust-lang.org/book/ch05-01-defining-structs.html)
 - Package
-  - [Cw0](https://docs.rs/cw0/0.10.3/cw0/)
-    - [Duration](https://docs.rs/cw0/0.10.3/cw0/enum.Duration.html)
-    - [Expiration](https://docs.rs/cw0/0.10.3/cw0/enum.Expiration.html)
+  - [cw-utils](https://docs.rs/cw-utils/1.0.1/cw_utils)
+    - [Duration](https://docs.rs/cw-utils/1.0.1/cw_utils/enum.Duration.html)
+    - [Expiration](https://docs.rs/cw-utils/1.0.1/cw_utils/enum.Expiration.html)
+
+# Build, Test and Compile
+
+- from project root level, execute:
+```
+chmod +x ./run-test.sh
+chmod +x ./run-build-and-compile.sh
+```
+```
+sudo ./run-test.sh
+sudo ./run-build-and-compile.sh
+```
+
+The compiled conract binary shall be placed at: "artifacts/lease_management_system.wasm"
+
+### Uploading
+- Once binary is generated, you can upload it to the network by executing the following command in the CLI.
+
+**To a local network**
+```bash
+$ cudos-noded tx wasm store <PATH_TO_WASM_FILE> --from=<SIGNER_ADDRESS> --chain-id=<CHAIN_ID> --gas-prices=5000000000000acudos --gas=auto --gas-adjustment=1.3
+```
+**To a remote network**
+```bash
+$ cudos-noded tx wasm store <PATH_TO_WASM_FILE> --from=<SIGNER_ADDRESS> --chain-id=<CHAIN_ID> --gas-prices=5000000000000acudos --gas=auto --gas-adjustment=1.3 --node=<TARGET_NODE>
+```
+
+### Instantiating
+- When uploaded, you can instantiate the uploaded contract, using the returned code ID from the upload with the following command in the CLI.
+```bash
+$ sudo cudos-noded tx wasm instantiate <CODE_ID> '{"owner":"<OWNER_ADDRESS>"}' --from=<OWNER_ADDRESS> --chain-id=<CHAIN_ID> --gas-prices=5000000000000acudos --gas=auto --gas-adjustment=1.3 --label='cudovenger_game' --no-admin
+```
