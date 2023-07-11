@@ -1,15 +1,16 @@
-use std::ops::{Add, Sub};
+use std::ops::Add;
 
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::{
     entry_point, to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Env, MessageInfo, Response,
     StdError, StdResult, Uint128,
 };
+use cosmwasm_std::{Order, Storage};
 use cw_utils::{Duration, Expiration};
 
 use crate::{
     msg::{ExecuteMsg, InstantiateMsg, QueryMsg},
-    state::{FlatInfo, DENOM, FLAT_LIST, OWNER, RENTER_TO_FLAT_ID},
+    state::{FlatInfo, DENOM, FLAT_COUNT, FLAT_LIST, OWNER, RENTER_TO_FLAT_ID},
     ContractError,
 };
 
@@ -26,6 +27,8 @@ pub fn instantiate(
     let denom = String::from("acudos");
     DENOM.save(deps.storage, &denom)?;
     OWNER.save(deps.storage, &info.sender)?;
+    let initial_flat_count: u16 = 0u16;
+    FLAT_COUNT.save(deps.storage, &initial_flat_count)?;
     Ok(Response::default())
 }
 
@@ -38,6 +41,9 @@ pub fn execute(
 ) -> Result<Response, ContractError> {
     match msg {
         ExecuteMsg::AddProperty { rent } => execute_add_property(deps, env, info, rent),
+        ExecuteMsg::RemoveProperty { property_id } => {
+            execute_remove_property(deps, env, info, property_id)
+        }
         ExecuteMsg::AcceptLease { property_id } => {
             execute_accept_lease(deps, env, info, property_id)
         }
@@ -58,7 +64,7 @@ fn execute_pay_rent(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    id: usize,
+    id: u16,
 ) -> Result<Response, ContractError> {
     // It can only be done after renter accepted the rentee.
     // Can only be called by the rentee of the flat within completion of month.
@@ -66,19 +72,13 @@ fn execute_pay_rent(
     // If rentee paid rent twice in the month then rentee agrement is valid for two months.
     // If amount provided by  rentee is more than one month rent then refund the excess rent to the rentee.
 
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?.unwrap();
+    let mut property = find_flat(id, deps.as_ref())?;
 
-    if id > cfg_flatlist.len() - 1 {
-        return Err(ContractError::NotFound {});
-    }
-
-    let my_property = cfg_flatlist[id].clone();
-
-    if my_property.expires == None {
+    if property.expires == None {
         return Err(ContractError::ExpirationDoesNotExist {});
     };
 
-    if my_property.expires.unwrap().is_expired(&env.block) {
+    if property.expires.unwrap().is_expired(&env.block) {
         return Err(ContractError::Expired {});
     }
 
@@ -90,19 +90,16 @@ fn execute_pay_rent(
 
     let rentee_cudo = info.funds[rentee_cudo_index].amount;
 
-    if rentee_cudo < my_property.rent {
+    if rentee_cudo < property.rent {
         return Err(ContractError::LessThanRent {});
     };
-    let new_expiry = my_property
-        .expires
-        .unwrap()
-        .add(Duration::Height(411428u64))?;
-    cfg_flatlist[id].expires = Some(new_expiry);
+    let new_expiry = property.expires.unwrap().add(Duration::Height(411428u64))?;
+    property.expires = Some(new_expiry);
 
-    let double_rent = my_property.rent + my_property.rent;
+    let double_rent = property.rent + property.rent;
 
-    if rentee_cudo != double_rent && rentee_cudo > my_property.rent {
-        let excess_rent = rentee_cudo - my_property.rent;
+    if rentee_cudo != double_rent && rentee_cudo > property.rent {
+        let excess_rent = rentee_cudo - property.rent;
         BankMsg::Send {
             to_address: info.sender.to_string(),
             amount: vec![Coin {
@@ -113,14 +110,14 @@ fn execute_pay_rent(
     }
 
     if rentee_cudo == double_rent {
-        let new_expiry = my_property
+        let new_expiry = property
             .expires
             .unwrap()
             .add(Duration::Height(411428u64 * 2))?;
-        cfg_flatlist[id].expires = Some(new_expiry);
+        property.expires = Some(new_expiry);
     };
 
-    FLAT_LIST.save(deps.storage, &cfg_flatlist)?;
+    FLAT_LIST.save(deps.storage, id, &property)?;
 
     Ok(Response::default())
 }
@@ -129,7 +126,7 @@ fn execute_reject_lease(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    id: usize,
+    id: u16,
 ) -> Result<Response, ContractError> {
     // It is used to reject the rentee and release the amount locked by the rentee for a given property.
     // Can be called only by Renter of the property
@@ -137,25 +134,21 @@ fn execute_reject_lease(
     // Also update the expiration date with None.
     // Update rentee with None.
 
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?.unwrap();
+    let mut property = find_flat(id, deps.as_ref())?;
 
-    if cfg_flatlist[id].rentee == None {
+    if property.rentee == None {
         return Err(ContractError::IsNotRented {});
     };
 
-    if id > cfg_flatlist.len() - 1 {
-        return Err(ContractError::NotFound {});
-    };
-
-    if cfg_flatlist[id].renter != info.sender.to_string() {
+    if property.renter != info.sender.to_string() {
         return Err(ContractError::InvalidRenter {});
     };
 
-    if cfg_flatlist[id].rentee != None && cfg_flatlist[id].expires != None {
+    if property.rentee != None && property.expires != None {
         return Err(ContractError::IsAcceptedByRenter {});
     };
 
-    let rentee_deposite = cfg_flatlist[id].rent + cfg_flatlist[id].rent;
+    let rentee_deposite = property.rent + property.rent;
 
     let codocrypto = Coin {
         amount: rentee_deposite,
@@ -163,14 +156,14 @@ fn execute_reject_lease(
     };
 
     BankMsg::Send {
-        to_address: cfg_flatlist[id].rentee.as_ref().unwrap().to_string(),
+        to_address: property.rentee.as_ref().unwrap().to_string(),
         amount: vec![codocrypto],
     };
 
-    cfg_flatlist[id].expires = None;
-    cfg_flatlist[id].rentee = None;
+    property.expires = None;
+    property.rentee = None;
 
-    FLAT_LIST.save(deps.storage, &cfg_flatlist)?;
+    FLAT_LIST.save(deps.storage, id, &property)?;
 
     Ok(Response::default())
 }
@@ -179,30 +172,26 @@ fn execute_accept_lease(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    id: usize,
+    id: u16,
 ) -> Result<Response, ContractError> {
     // Can be called only by Renter of the property
     // The rent of the first month locked inside the contract is released to the Renter
     // Also update the expiration date with one month.
 
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?.unwrap();
+    let mut property = find_flat(id, deps.as_ref())?;
 
-    if id > cfg_flatlist.len() - 1 {
-        return Err(ContractError::NotFound {});
-    };
-
-    if cfg_flatlist[id].renter != info.sender.to_string() {
+    if property.renter != info.sender.to_string() {
         return Err(ContractError::InvalidRenter {});
     };
 
-    if cfg_flatlist[id].rentee == None {
+    if property.rentee == None {
         return Err(ContractError::IsNotRented {});
     };
 
     let t = env.block.height + 411428;
-    cfg_flatlist[id].expires = Some(Expiration::AtHeight(t));
+    property.expires = Some(Expiration::AtHeight(t));
 
-    let rentee_deposite = cfg_flatlist[id].rent + cfg_flatlist[id].rent;
+    let rentee_deposite = property.rent + property.rent;
 
     let codocrypto = Coin {
         amount: rentee_deposite,
@@ -210,12 +199,33 @@ fn execute_accept_lease(
     };
 
     BankMsg::Send {
-        to_address: cfg_flatlist[id].rentee.as_ref().unwrap().to_string(),
+        to_address: property.rentee.as_ref().unwrap().to_string(),
         amount: vec![codocrypto],
     };
 
-    FLAT_LIST.save(deps.storage, &cfg_flatlist)?;
+    FLAT_LIST.save(deps.storage, id, &property)?;
 
+    Ok(Response::default())
+}
+
+fn execute_remove_property(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    id: u16,
+) -> Result<Response, ContractError> {
+    let property = find_flat(id, deps.as_ref())?;
+
+    if property.renter != info.sender.to_string() {
+        return Err(ContractError::InvalidRenter {});
+    }
+
+    if property.rentee.is_some() {
+        return Err(ContractError::RenteeExist {});
+    }
+
+    FLAT_LIST.remove(deps.storage, id);
+    let _result = remove_from_flat_counter(deps);
     Ok(Response::default())
 }
 
@@ -231,41 +241,27 @@ fn execute_add_property(
     // Property is assigned with propertyid
     // PropertyId is auto-incremental id ie... if the contract has 100 properties (listed by different renter) then id would start from 1 to 100 and the next property id will be 101.
 
-    let data = FlatInfo {
+    let data: FlatInfo = FlatInfo {
         renter: info.sender.clone().to_string(),
         rentee: None,
-        rent: rent,
+        rent,
         expires: None,
     };
 
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?;
+    let id = get_next_id(deps.storage)?;
+    FLAT_LIST.save(deps.storage, id, &data)?;
 
-    if cfg_flatlist == None {
-        cfg_flatlist = Some(vec![data.clone()]);
-        FLAT_LIST.save(deps.storage, &cfg_flatlist.clone().unwrap())?;
-    } else {
-        FLAT_LIST.update(deps.storage, |mut val| -> StdResult<Vec<FlatInfo>> {
-            val.push(data);
-            Ok(val)
-        })?;
-    };
-
-    let mut l = FLAT_LIST.load(deps.storage)?.len();
-    if l.gt(&usize::from(0u16)) {
-        l = l.sub(usize::from(1u16));
-    }
-    RENTER_TO_FLAT_ID.update(deps.storage, &info.sender, |val| -> StdResult<Vec<usize>> {
+    RENTER_TO_FLAT_ID.update(deps.storage, &info.sender, |val| -> StdResult<Vec<u16>> {
         match val {
             Some(mut h) => {
-                h.push(l);
+                h.push(id);
                 Ok(h)
             }
-            None => {
-                Ok(vec![l])
-            }
+            None => Ok(vec![id]),
         }
     })?;
 
+    let _result = add_to_flat_counter(deps);
     Ok(Response::default())
 }
 
@@ -273,27 +269,20 @@ fn execute_request_lease(
     deps: DepsMut,
     _env: Env,
     info: MessageInfo,
-    id: usize,
+    id: u16,
 ) -> Result<Response, ContractError> {
     // The caller of this function is Rentee who wants to rent a property and will pay rent + security in desired denomination mentioned in the contract ie.. native currency.
     // Locks rent of the first month with a security deposit which is equivalent to one month rent to the contract ie.. rentee needs to lock 2x amount of rent.
     // This rent of the first month + security is released when the Renter of the property accepts the rent.
     // If amount provided by rentee is more than one month rent + security then refund the excess rent to the rentee.
 
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?.unwrap();
-    let caller_is_renter = cfg_flatlist
-        .iter()
-        .any(|a| a.renter.as_ref() == info.sender.to_string());
+    let mut property = find_flat(id, deps.as_ref())?;
 
-    if caller_is_renter {
+    if property.renter == info.sender.to_string() {
         return Err(ContractError::InvalidRentee {});
     }
 
-    if id > cfg_flatlist.len() - 1 {
-        return Err(ContractError::NotFound {});
-    }
-
-    if cfg_flatlist[id].rentee != None {
+    if property.rentee != None {
         return Err(ContractError::RenteeExist {});
     }
 
@@ -306,7 +295,7 @@ fn execute_request_lease(
         return Err(ContractError::InvalidDenom {});
     }
 
-    let rent = cfg_flatlist[id].rent;
+    let rent = property.rent;
     let amount_to_pay = rent + rent;
 
     if info
@@ -318,9 +307,9 @@ fn execute_request_lease(
         return Err(ContractError::LessThanRent {});
     };
 
-    cfg_flatlist[id].rentee = Some(info.sender.to_string());
+    property.rentee = Some(info.sender.to_string());
 
-    FLAT_LIST.save(deps.storage, &cfg_flatlist)?;
+    FLAT_LIST.save(deps.storage, id, &property)?;
 
     Ok(Response::new()
         .add_attribute("action", "refund")
@@ -331,52 +320,48 @@ fn execute_terminate_lease(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    id: usize,
+    id: u16,
 ) -> Result<Response, ContractError> {
     // Can be called by Renter of the property and is used to terminate the lease only if Rentee defaults on any month rent.
     // Release the security deposit to rentee.
     // Update the expiration date with None
     // Remove the rentee with that property id.
-    let mut cfg_flatlist = FLAT_LIST.may_load(deps.storage)?.unwrap();
+    let mut property = find_flat(id, deps.as_ref())?;
 
-    if id > cfg_flatlist.len() - 1 {
-        return Err(ContractError::NotFound {});
-    };
-
-    if cfg_flatlist[id].renter != info.sender.to_string() {
+    if property.renter != info.sender.to_string() {
         return Err(ContractError::InvalidRenter {});
     };
 
-    if cfg_flatlist[id].expires == None {
+    if property.expires == None {
         return Err(ContractError::IsNotRented {});
     };
 
-    let exp = cfg_flatlist[id].expires.unwrap().is_expired(&env.block);
+    let exp = property.expires.unwrap().is_expired(&env.block);
     if !exp {
         return Err(ContractError::NotExpired {});
     }
 
     let codocrypto = Coin {
-        amount: cfg_flatlist[id].rent,
+        amount: property.rent,
         denom: String::from("acudos"),
     };
 
     BankMsg::Send {
-        to_address: cfg_flatlist[id].rentee.as_ref().unwrap().to_string(),
+        to_address: property.rentee.as_ref().unwrap().to_string(),
         amount: vec![codocrypto],
     };
 
-    cfg_flatlist[id].expires = None;
-    cfg_flatlist[id].rentee = None;
+    property.expires = None;
+    property.rentee = None;
 
-    FLAT_LIST.save(deps.storage, &cfg_flatlist)?;
+    FLAT_LIST.save(deps.storage, id, &property)?;
     Ok(Response::default())
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     match msg {
-        QueryMsg::PropertyDetail(id) => to_binary(&query_property_info(deps, id)?),
+        QueryMsg::PropertyDetail(id) => to_binary(&query_property_info(deps, u16::from(id))?),
         QueryMsg::ShowAllAvailableProperties => {
             to_binary(&query_show_all_available_properties(deps)?)
         }
@@ -384,24 +369,54 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
     }
 }
 
-pub fn query_property_info(deps: Deps, id: usize) -> StdResult<FlatInfo> {
-    let flat_list = FLAT_LIST.may_load(deps.storage)?.unwrap();
-    if id > flat_list.len() {
-        return Err(StdError::NotFound {
-            kind: String::from("property not found"),
-        });
-    }
-    Ok(flat_list[id].clone())
+pub fn query_property_info(deps: Deps, id: u16) -> StdResult<FlatInfo> {
+    let property = find_flat(id, deps).map_err(|err| StdError::generic_err(err.to_string()))?;
+    Ok(property.clone())
 }
 
-pub fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<usize>> {
+pub fn query_show_all_available_properties(deps: Deps) -> StdResult<Vec<u16>> {
     let mut flat_list = vec![];
-    let flat_list2 = FLAT_LIST.may_load(deps.storage)?.unwrap();
-    flat_list.push(flat_list2.len());
+    let mut iter = FLAT_LIST.range(deps.storage, None, None, Order::Ascending);
+    while let Some(result) = iter.next() {
+        let (id, flat_info) = result?;
+        if !flat_info.rentee.is_some() {
+            flat_list.push(id);
+        }
+    }
     Ok(flat_list)
 }
 
-pub fn query_get_total_property(deps: Deps) -> StdResult<usize> {
-    let flat_list2 = FLAT_LIST.may_load(deps.storage)?.unwrap();
-    Ok(flat_list2.len())
+pub fn query_get_total_property(deps: Deps) -> StdResult<u16> {
+    let total = count_flats(deps.storage)?;
+    Ok(total)
+}
+
+fn find_flat(id: u16, deps: Deps) -> Result<FlatInfo, ContractError> {
+    FLAT_LIST
+        .load(deps.storage, id)
+        .map_err(|_| ContractError::NotFound {})
+}
+
+fn count_flats(storage: &dyn Storage) -> StdResult<u16> {
+    let total = FLAT_COUNT.load(storage)?;
+    Ok(total)
+}
+
+fn add_to_flat_counter(deps: DepsMut) -> Result<(), ContractError> {
+    let mut flat_count = FLAT_COUNT.load(deps.storage)?;
+    flat_count += 1;
+    FLAT_COUNT.save(deps.storage, &flat_count)?;
+    Ok(())
+}
+
+fn remove_from_flat_counter(deps: DepsMut) -> Result<(), ContractError> {
+    let mut flat_count = FLAT_COUNT.load(deps.storage)?;
+    flat_count -= 1;
+    FLAT_COUNT.save(deps.storage, &flat_count)?;
+    Ok(())
+}
+
+fn get_next_id(storage: &mut dyn Storage) -> StdResult<u16> {
+    let id = count_flats(storage)?;
+    Ok(id + 1)
 }
