@@ -40,7 +40,7 @@ Lease Management System is a smart contract where the owner of the contract can 
     - If the amount provided by the Rentee is more than one month’s rent + security then refund the excess rent to the Rentee.
   - Technical details
     - If the denomination of the amount passed is different as mentioned inside the contract then throw an error named **InvalidDenom.**
-    - If property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}**
+    - If the property id is not present inside the contract then throw an error **StdError::NotFound {kind: String::from("Property not found"),}**
     - If the amount passed to this function is less than rent + security throw an error **StdError::overflow.**
     - If property is already rented then throw an error **IsRented.**
     - If property is already requested by some other other rentee and is not accepted by renter then throw **RenteeExist.**
